@@ -1,4 +1,4 @@
-export type AiProvider = 'deepseek' | 'openai' | 'claude';
+export type AiProvider = 'deepseek' | 'openai' | 'claude' | 'lovable';
 
 export interface AiProviderConfig {
   provider: AiProvider;
@@ -16,7 +16,7 @@ export interface JsonAiRequest {
 
 type EnvReader = (name: string) => string | undefined;
 
-const PROVIDERS = new Set<AiProvider>(['deepseek', 'openai', 'claude']);
+const PROVIDERS = new Set<AiProvider>(['deepseek', 'openai', 'claude', 'lovable']);
 
 function clean(value: string | undefined): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -32,7 +32,23 @@ export function normalizeAiProvider(value?: string | null, fallback: AiProvider 
 }
 
 export function resolveAiProviderConfig(env: EnvReader, requestedProvider?: string | null): AiProviderConfig | null {
-  const provider = normalizeAiProvider(requestedProvider || env('AI_PROVIDER') || env('LLM_PROVIDER'));
+  const explicitProvider = clean(requestedProvider || env('AI_PROVIDER') || env('LLM_PROVIDER'));
+  // Default to Lovable AI Gateway when no explicit provider is set and the key exists.
+  const provider = explicitProvider
+    ? normalizeAiProvider(explicitProvider)
+    : (clean(env('LOVABLE_API_KEY')) ? 'lovable' : 'deepseek');
+
+  if (provider === 'lovable') {
+    const apiKey = clean(env('LOVABLE_API_KEY'));
+    if (!apiKey) return null;
+    return {
+      provider,
+      apiKey,
+      model: clean(env('LOVABLE_MODEL')) || 'google/gemini-2.5-flash',
+      baseUrl: trimTrailingSlash(clean(env('LOVABLE_BASE_URL')) || 'https://ai.gateway.lovable.dev/v1'),
+      maxTokens: Number(clean(env('LOVABLE_MAX_TOKENS'))) || 3000,
+    };
+  }
 
   if (provider === 'openai') {
     const apiKey = clean(env('OPENAI_API_KEY'));
@@ -93,21 +109,34 @@ export function buildJsonAiRequest(
     };
   }
 
+  const isLovable = config.provider === 'lovable';
+  const headers: Record<string, string> = isLovable
+    ? {
+        'Lovable-API-Key': config.apiKey,
+        'Content-Type': 'application/json',
+        'X-Lovable-AIG-SDK': 'edge-function',
+      }
+    : {
+        Authorization: `Bearer ${config.apiKey}`,
+        'Content-Type': 'application/json',
+      };
+
+  const body: Record<string, unknown> = {
+    model: config.model,
+    temperature,
+    messages: [
+      { role: 'system', content: systemContent },
+      { role: 'user', content: userContent },
+    ],
+  };
+  if (!isLovable) {
+    body.response_format = { type: 'json_object' };
+  }
+
   return {
     url: `${config.baseUrl}/chat/completions`,
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: {
-      model: config.model,
-      response_format: { type: 'json_object' },
-      temperature,
-      messages: [
-        { role: 'system', content: systemContent },
-        { role: 'user', content: userContent },
-      ],
-    },
+    headers,
+    body,
   };
 }
 
