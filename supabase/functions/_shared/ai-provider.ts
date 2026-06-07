@@ -109,21 +109,34 @@ export function buildJsonAiRequest(
     };
   }
 
+  const isLovable = config.provider === 'lovable';
+  const headers: Record<string, string> = isLovable
+    ? {
+        'Lovable-API-Key': config.apiKey,
+        'Content-Type': 'application/json',
+        'X-Lovable-AIG-SDK': 'edge-function',
+      }
+    : {
+        Authorization: `Bearer ${config.apiKey}`,
+        'Content-Type': 'application/json',
+      };
+
+  const body: Record<string, unknown> = {
+    model: config.model,
+    temperature,
+    messages: [
+      { role: 'system', content: systemContent },
+      { role: 'user', content: userContent },
+    ],
+  };
+  if (!isLovable) {
+    body.response_format = { type: 'json_object' };
+  }
+
   return {
     url: `${config.baseUrl}/chat/completions`,
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: {
-      model: config.model,
-      response_format: { type: 'json_object' },
-      temperature,
-      messages: [
-        { role: 'system', content: systemContent },
-        { role: 'user', content: userContent },
-      ],
-    },
+    headers,
+    body,
   };
 }
 
