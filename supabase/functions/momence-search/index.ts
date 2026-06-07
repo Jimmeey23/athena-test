@@ -20,6 +20,8 @@ type TokenResponse = {
 
 const ALLOWED_REQUESTS: Array<{ method: string; pattern: RegExp }> = [
   { method: 'GET', pattern: /^\/host\/members$/ },
+  { method: 'POST', pattern: /^\/host\/members$/ },
+  { method: 'POST', pattern: /^\/host\/members\/list$/ },
   { method: 'GET', pattern: /^\/host\/members\/\d+$/ },
   { method: 'PUT', pattern: /^\/host\/members\/\d+\/name$/ },
   { method: 'PUT', pattern: /^\/host\/members\/\d+\/email$/ },
