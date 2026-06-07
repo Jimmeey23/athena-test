@@ -1231,3 +1231,34 @@ export async function getMomenceCompatibleMemberships(body: Record<string, unkno
 export async function performMomenceCheckout(body: Record<string, unknown>) {
   return callMomence('/host/checkout', { method: 'POST', body });
 }
+
+// POST /api/v2/host/members — Add member.
+// Required: email, firstName, lastName. Optional: phoneNumber, homeLocationId.
+// See: https://api.docs.momence.com/reference/apiv2hostmemberscontroller_create
+export async function createMomenceMember(body: {
+  email: string;
+  firstName: string;
+  lastName: string;
+  phoneNumber?: string;
+  homeLocationId?: number;
+}) {
+  return callMomence<{ memberId: number }>('/host/members', { method: 'POST', body });
+}
+
+// POST /api/v2/host/members/list — Get members with rich filters (filter, filterPreset, staticSegmentId, etc.).
+// See: https://api.docs.momence.com/reference/apiv2hostmemberscontroller_listpost
+export async function searchMomenceMembersWithFilters(body: {
+  page: number;
+  pageSize: number;
+  sortBy?: 'lastSeenAt' | 'firstSeenAt' | 'firstName' | 'lastName' | 'email';
+  sortOrder?: 'ASC' | 'DESC';
+  query?: string;
+  filterPreset?: 'with-active-membership';
+  staticSegmentId?: number;
+  filter?: Record<string, unknown>;
+}) {
+  return callMomence<PaginatedMomenceResponse<MomenceMember>>('/host/members/list', {
+    method: 'POST',
+    body,
+  });
+}
