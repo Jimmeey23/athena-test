@@ -1,6 +1,6 @@
 const MOMENCE_BASE_URL = 'https://api.momence.com/api/v2';
 const DEFAULT_PAST_DAYS = 180;
-const DEFAULT_FUTURE_DAYS = 45;
+const DEFAULT_FUTURE_DAYS = 0;
 const DEFAULT_PAGE_SIZE = 200;
 const DEFAULT_SESSION_TYPE = 'private';
 const MAX_PAGES = 12;
@@ -187,9 +187,13 @@ Deno.serve(async (request) => {
     const pageSize = clampPageSize(body.pageSize);
     const startPage = clampPage(body.page);
     const maxPages = clampMaxPages(body.maxPages);
-    const sessionTypes = Array.isArray(body.types) && body.types.some((type) => typeof type === 'string' && type.trim())
+    // Empty array = no type filter (all sessions). Only fall back to DEFAULT_SESSION_TYPE
+    // when body.types is absent entirely (undefined/null), not when it's an explicit empty array.
+    const sessionTypes = Array.isArray(body.types)
       ? body.types.filter((type): type is string => typeof type === 'string' && Boolean(type.trim())).map((type) => type.trim())
-      : [typeof body.type === 'string' && body.type.trim() ? body.type.trim() : DEFAULT_SESSION_TYPE];
+      : typeof body.type === 'string' && body.type.trim()
+        ? [body.type.trim()]
+        : [];
 
     startAfter.setDate(now.getDate() - pastDays);
     startBefore.setDate(now.getDate() + futureDays);
@@ -211,7 +215,7 @@ Deno.serve(async (request) => {
       url.searchParams.set('startAfter', startAfter.toISOString());
       url.searchParams.set('startBefore', startBefore.toISOString());
       for (const sessionType of sessionTypes) {
-        url.searchParams.append('types', sessionType);
+        if (sessionType) url.searchParams.append('types[]', sessionType);
       }
 
       const response = await fetch(url.toString(), {

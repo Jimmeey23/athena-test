@@ -3,6 +3,7 @@ import { TicketProvider } from './ticketing/TicketContext';
 import { useTickets } from './ticketing/useTickets';
 import { ChatInterface } from './ticketing/ChatInterface';
 import { StandaloneMomencePanel } from './ticketing/StandaloneMomencePanel';
+import { KnowledgeBasePanel } from './ticketing/KnowledgeBasePanel';
 import { TicketDetailDrawer } from './ticketing/TicketDetailDrawer';
 import { AuthGate } from './AuthGate';
 import { BackendAuthProvider, useBackendAuth } from '@/contexts/BackendAuthContext';
@@ -902,7 +903,7 @@ function nextRoutingCategoryName(rules: RoutingRuleSetting[]): string {
 
 const SettingsPanel: React.FC<{ userEmail: string; accessRole: string }> = ({ userEmail, accessRole }) => {
   const [settings, setSettings] = useState<RoutingSettings>(() => collapseCategoryRouting(defaultRoutingSettings()));
-  const [activeSection, setActiveSection] = useState<'overview' | 'routing' | 'team' | 'catalog'>('overview');
+  const [activeSection, setActiveSection] = useState<'overview' | 'routing' | 'team' | 'catalog' | 'knowledge'>('overview');
   const [employeeQuery, setEmployeeQuery] = useState('');
   const [departmentQuery, setDepartmentQuery] = useState('');
   const [locationQuery, setLocationQuery] = useState('');
@@ -1156,6 +1157,7 @@ const SettingsPanel: React.FC<{ userEmail: string; accessRole: string }> = ({ us
               ['routing', 'Routing Rules', `${categoryRoutingRows.length} categories`],
               ['team', 'Team Directory', `${settings.employees.length} people`],
               ['catalog', 'Departments & Locations', `${settings.departments.length + settings.locations.length} entries`],
+              ['knowledge', 'Knowledge Base', 'Athena rules'],
             ].map(([key, label, count]) => (
               <button
                 key={key}
@@ -1200,6 +1202,12 @@ const SettingsPanel: React.FC<{ userEmail: string; accessRole: string }> = ({ us
                   <SettingsTd>Keep manager and location fields updated for all active team members</SettingsTd>
                 </tr>
               </SettingsTable>
+            </SettingsSection>
+          )}
+
+          {activeSection === 'knowledge' && (
+            <SettingsSection title="Athena Knowledge Base">
+              <KnowledgeBasePanel />
             </SettingsSection>
           )}
 

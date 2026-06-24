@@ -23,7 +23,7 @@ describe('ticket AI chat payload', () => {
     ]);
   });
 
-  it('builds a compact server-owned prompt request without prompt text or master data', () => {
+  it('builds a compact server-owned prompt request without prompt text, master data, or static intake contract', () => {
     const body = buildAthenaDraftRequestBody({
       aiProvider: 'deepseek',
       conversationId: 'conversation-1',
@@ -43,12 +43,12 @@ describe('ticket AI chat payload', () => {
       promptProfile: ATHENA_PROMPT_PROFILE,
       conversationId: 'conversation-1',
       context: { studio: 'Supreme HQ, Bandra' },
-      intakeContract: { missingFields: ['clientsAffected'] },
       messages: [
         { role: 'user', content: '[Context - Studio: Bandra]\nAC is not cooling' },
       ],
     });
     expect(body).not.toHaveProperty('instructions');
     expect(body).not.toHaveProperty('masterData');
+    expect(body).not.toHaveProperty('intakeContract');
   });
 });

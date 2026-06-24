@@ -157,7 +157,24 @@ Deno.serve(async (request) => {
       .limit(candidateLimit);
     if (recentError) throw recentError;
 
-    const tickets = (recentlyCreated || []) as TicketEmailAutomationTicket[];
+    const { data: openSlaTickets, error: slaError } = await admin
+      .from('tickets')
+      .select(selectColumns)
+      .not('status', 'in', `(${openStatuses.map((status) => `"${status}"`).join(',')})`)
+      .not('sla_due_at', 'is', null)
+      .gte('sla_due_at', now.toISOString())
+      .order('sla_due_at', { ascending: true })
+      .limit(candidateLimit);
+    if (slaError) throw slaError;
+
+    const ticketMap = new Map<string, TicketEmailAutomationTicket>();
+    for (const ticket of [
+      ...((recentlyCreated || []) as TicketEmailAutomationTicket[]),
+      ...((openSlaTickets || []) as TicketEmailAutomationTicket[]),
+    ]) {
+      ticketMap.set(ticket.id, ticket);
+    }
+    const tickets = Array.from(ticketMap.values());
     const assignmentTicketIds = new Set(
       ((recentlyCreated || []) as TicketEmailAutomationTicket[]).map((ticket) => ticket.id),
     );
@@ -180,11 +197,13 @@ Deno.serve(async (request) => {
 
     if (body.dryRun) {
       return json({
-        ok: true,
-        dryRun: true,
-        ticketsScanned: tickets.length,
-        jobs,
-      });
+	        ok: true,
+	        dryRun: true,
+	        ticketsScanned: tickets.length,
+	        recentlyCreatedScanned: (recentlyCreated || []).length,
+	        openSlaTicketsScanned: (openSlaTickets || []).length,
+	        jobs,
+	      });
     }
 
     const automationSecret = optionalEnv('TICKET_EMAIL_AUTOMATION_SECRET');
@@ -203,9 +222,11 @@ Deno.serve(async (request) => {
     }
 
     return json({
-      ok: failed.length === 0,
-      ticketsScanned: tickets.length,
-      jobsAttempted: jobs.length,
+	      ok: failed.length === 0,
+	      ticketsScanned: tickets.length,
+	      recentlyCreatedScanned: (recentlyCreated || []).length,
+	      openSlaTicketsScanned: (openSlaTickets || []).length,
+	      jobsAttempted: jobs.length,
       sent,
       failed,
     }, failed.length ? 207 : 200);

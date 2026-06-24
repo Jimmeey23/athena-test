@@ -15,12 +15,12 @@ describe('shouldHoldDraftForMoreInfo', () => {
     })).toBe(false);
   });
 
-  it('blocks drafting when there are actionable missing fields', () => {
+  it('does not block drafting only because deterministic requirements are missing', () => {
     expect(shouldHoldDraftForMoreInfo({
       hasDetailForm: false,
       remainingMissingFieldCount: 1,
       aiNeedsMoreInfo: false,
-    })).toBe(true);
+    })).toBe(false);
   });
 });
 
@@ -31,10 +31,10 @@ describe('shouldAcceptAiDetailForm', () => {
     })).toBe(false);
   });
 
-  it('allows AI forms while deterministic required fields are still missing', () => {
+  it('does not accept a form only because deterministic required fields are missing', () => {
     expect(shouldAcceptAiDetailForm({
       remainingMissingFieldCount: 2,
-    })).toBe(true);
+    })).toBe(false);
   });
 
   it('accepts the AI contextual follow-up form once the floor is met when the AI asks for more', () => {

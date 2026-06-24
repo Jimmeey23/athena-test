@@ -4,7 +4,7 @@
 create table if not exists public.ticket_email_notifications (
   id uuid primary key default gen_random_uuid(),
   ticket_id text not null references public.tickets(id) on delete cascade,
-  event_type text not null check (event_type = 'ticket_assigned'),
+  event_type text not null check (event_type in ('ticket_assigned', 'ticket_sla_pre_warning')),
   event_key text not null unique,
   owner_name text not null,
   owner_email text not null,
@@ -22,7 +22,7 @@ drop constraint if exists ticket_email_notifications_event_type_check;
 
 alter table public.ticket_email_notifications
 add constraint ticket_email_notifications_event_type_check
-check (event_type = 'ticket_assigned') not valid;
+check (event_type in ('ticket_assigned', 'ticket_sla_pre_warning')) not valid;
 
 create index if not exists ticket_email_notifications_ticket_idx
 on public.ticket_email_notifications (ticket_id, created_at desc);

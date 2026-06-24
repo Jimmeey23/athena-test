@@ -11,14 +11,13 @@ export interface AthenaDraftRequestInput {
   conversationId?: string | null;
   debugTrace?: boolean;
   context: Record<string, unknown>;
-  intakeContract?: Record<string, unknown>;
   messages: ChatPayloadMessage[];
   preamble?: string;
 }
 
 export const ATHENA_PROMPT_PROFILE = 'athena-intake-v1';
 
-const DEFAULT_MESSAGE_LIMIT = 6;
+const DEFAULT_MESSAGE_LIMIT = 12;
 const MAX_MESSAGE_CHARS = 3000;
 
 function truncateMessageContent(content: string): string {
@@ -74,6 +73,5 @@ export function buildAthenaDraftRequestBody(input: AthenaDraftRequestInput) {
     messages: buildCompactChatMessages(input.messages, input.preamble),
     conversationId: input.conversationId,
     context: input.context,
-    intakeContract: input.intakeContract || {},
   };
 }

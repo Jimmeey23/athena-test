@@ -55,6 +55,7 @@ type NotificationAuditRow = {
 
 const VALID_EVENTS = new Set<TicketEmailEventType>([
   'ticket_assigned',
+  'ticket_sla_pre_warning',
 ]);
 
 function json(body: unknown, status = 200) {
@@ -108,6 +109,9 @@ function routingMetadata(row: TicketRow): Record<string, unknown> {
 }
 
 function eventKey(eventType: TicketEmailEventType, row: TicketRow): string {
+  if (eventType === 'ticket_sla_pre_warning') {
+    return `${eventType}:${row.id}:${row.assigned_to}:${row.created_at}:${row.sla_due_at}`;
+  }
   return `${eventType}:${row.id}:${row.assigned_to}:${row.created_at}`;
 }
 

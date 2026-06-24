@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
 import {
   AlertTriangle,
   BadgeCheck,
@@ -6,6 +6,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronRight,
+  FileText,
   Flame,
   MapPin,
   MessageSquare,
@@ -63,6 +64,43 @@ interface Props {
   activeDraft?: LiveDraft | null;
 }
 
+const TRACKED_FIELDS: (keyof LiveContext)[] = [
+  'category',
+  'subCategory',
+  'studio',
+  'priority',
+  'memberName',
+  'classType',
+  'trainer',
+  'membership',
+  'memberSentiment',
+  'desiredResolution',
+  'urgencyReason',
+];
+
+const MISSING_FIELD_LABELS: { key: keyof LiveContext; label: string }[] = [
+  { key: 'memberName', label: 'Member name' },
+  { key: 'studio', label: 'Studio' },
+  { key: 'category', label: 'Category' },
+  { key: 'classType', label: 'Class type' },
+  { key: 'trainer', label: 'Trainer' },
+  { key: 'priority', label: 'Priority' },
+  { key: 'memberSentiment', label: 'Sentiment' },
+  { key: 'desiredResolution', label: 'Desired resolution' },
+];
+
+function getSmartStatus(ctx: LiveContext, filled: number, hasDraft: boolean): string {
+  if (hasDraft) return 'Draft ready';
+  if (filled === 0) return 'Waiting for details…';
+  if (!ctx.memberName) return 'Waiting for member name…';
+  if (!ctx.studio) return 'Need studio location…';
+  if (!ctx.category) return 'Identifying issue type…';
+  if (!ctx.classType && !ctx.trainer) return 'Need class details…';
+  if (!ctx.priority) return 'Assessing priority…';
+  if (filled >= 6) return 'Almost there…';
+  return 'Capturing context…';
+}
+
 function priorityColors(priority?: string) {
   if (priority === 'Critical') return 'bg-red-100 text-red-700 border-red-200';
   if (priority === 'High') return 'bg-orange-100 text-orange-700 border-orange-200';
@@ -77,12 +115,41 @@ function sentimentColors(sentiment?: string) {
   return 'bg-slate-100 text-slate-500 border-slate-200';
 }
 
-const FieldChip: React.FC<{ label: string; value: string; tone?: 'default' | 'priority' | 'sentiment' }> = ({ label, value, tone = 'default' }) => {
-  const toneClass = tone === 'priority' ? priorityColors(value) : tone === 'sentiment' ? sentimentColors(value) : 'bg-slate-100 text-slate-700 border-slate-200';
+// Flashes a highlight ring when a field first appears
+const AnimatedFieldChip: React.FC<{
+  label: string;
+  value: string;
+  tone?: 'default' | 'priority' | 'sentiment';
+}> = ({ label, value, tone = 'default' }) => {
+  const [flash, setFlash] = useState(true);
+  const prevValue = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (prevValue.current !== value) {
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), 800);
+      prevValue.current = value;
+      return () => clearTimeout(t);
+    }
+  }, [value]);
+
+  const toneClass =
+    tone === 'priority'
+      ? priorityColors(value)
+      : tone === 'sentiment'
+      ? sentimentColors(value)
+      : 'bg-slate-100 text-slate-700 border-slate-200';
+
   return (
-    <div className={`flex items-center justify-between rounded-lg border px-2.5 py-1.5 ${toneClass}`}>
+    <div
+      className={`flex items-center justify-between rounded-lg border px-2.5 py-1.5 transition-all duration-300 ${toneClass} ${
+        flash ? 'ring-2 ring-indigo-300 ring-offset-1' : ''
+      }`}
+    >
       <span className="text-[9px] font-bold uppercase tracking-[0.14em] opacity-60">{label}</span>
-      <span className="ml-2 text-right text-[11px] font-semibold truncate max-w-[120px]" title={value}>{value}</span>
+      <span className="ml-2 text-right text-[11px] font-semibold truncate max-w-[120px]" title={value}>
+        {value}
+      </span>
     </div>
   );
 };
@@ -95,8 +162,7 @@ const SectionLabel: React.FC<{ icon: React.ReactNode; title: string }> = ({ icon
 );
 
 function countFilledContext(ctx: LiveContext): number {
-  const keys: (keyof LiveContext)[] = ['category', 'subCategory', 'studio', 'priority', 'memberName', 'classType', 'trainer', 'membership', 'memberSentiment', 'desiredResolution', 'urgencyReason'];
-  return keys.filter((k) => ctx[k]?.trim()).length;
+  return TRACKED_FIELDS.filter((k) => ctx[k]?.trim()).length;
 }
 
 export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => {
@@ -105,6 +171,8 @@ export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => 
   const hasMember = Boolean(context.memberName || context.memberId);
   const hasSession = Boolean(context.classType || context.sessionId || context.classDateTime);
   const hasClassification = Boolean(context.category || context.priority || context.studio);
+  const hasDescription = Boolean(context.description?.trim());
+
   const totalSignals = useMemo(() => {
     const signals: string[] = [];
     if (context.memberName) signals.push(context.memberName);
@@ -112,7 +180,15 @@ export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => 
     if (context.category) signals.push(context.category);
     return signals;
   }, [context]);
+
+  const total = TRACKED_FIELDS.length;
   const progressPct = Math.min(100, Math.round((filled / 8) * 100));
+  const smartStatus = getSmartStatus(context, filled, hasDraft);
+
+  const missingFields = useMemo(
+    () => MISSING_FIELD_LABELS.filter(({ key }) => !context[key]?.trim()).slice(0, 4),
+    [context]
+  );
 
   if (filled === 0 && !hasDraft) {
     return (
@@ -137,13 +213,12 @@ export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => 
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {/* Header */}
       <div className="shrink-0 border-b border-slate-200 bg-gradient-to-r from-white via-indigo-50/20 to-white px-4 py-3">
         <div className="flex items-center justify-between gap-2 mb-2">
           <div>
             <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-indigo-600">Live Ticket</div>
-            <div className="text-[13px] font-semibold text-slate-900">
-              {hasDraft ? 'Draft ready' : 'Capturing context'}
-            </div>
+            <div className="text-[13px] font-semibold text-slate-900">{smartStatus}</div>
           </div>
           {hasDraft && (
             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
@@ -159,7 +234,9 @@ export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => 
               style={{ width: `${progressPct}%` }}
             />
           </div>
-          <span className="text-[10px] font-bold text-slate-400">{progressPct}%</span>
+          <span className="text-[10px] font-bold text-slate-400 tabular-nums">
+            {filled}/{total}
+          </span>
         </div>
         {totalSignals.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
@@ -174,6 +251,8 @@ export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => 
 
       <div className="flex-1 overflow-y-auto">
         <div className="space-y-4 p-4">
+
+          {/* Draft title */}
           {hasDraft && activeDraft?.title && (
             <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3">
               <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-indigo-500 mb-1">Draft Title</div>
@@ -191,14 +270,15 @@ export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => 
             </div>
           )}
 
+          {/* Classification */}
           {hasClassification && (
             <div>
               <SectionLabel icon={<BadgeCheck className="h-3.5 w-3.5" />} title="Classification" />
               <div className="space-y-1.5">
-                {context.category && <FieldChip label="Category" value={context.category} />}
-                {context.subCategory && <FieldChip label="Subcategory" value={context.subCategory} />}
+                {context.category && <AnimatedFieldChip label="Category" value={context.category} />}
+                {context.subCategory && <AnimatedFieldChip label="Subcategory" value={context.subCategory} />}
                 {(context.priority || activeDraft?.priority) && (
-                  <FieldChip label="Priority" value={context.priority || activeDraft?.priority || ''} tone="priority" />
+                  <AnimatedFieldChip label="Priority" value={context.priority || activeDraft?.priority || ''} tone="priority" />
                 )}
                 {(context.studio || activeDraft?.studio) && (
                   <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-1.5">
@@ -209,11 +289,12 @@ export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => 
                     </span>
                   </div>
                 )}
-                {context.intakeRoute && <FieldChip label="Route" value={context.intakeRoute} />}
+                {context.intakeRoute && <AnimatedFieldChip label="Route" value={context.intakeRoute} />}
               </div>
             </div>
           )}
 
+          {/* Member */}
           {hasMember && (
             <div>
               <SectionLabel icon={<User className="h-3.5 w-3.5" />} title="Member" />
@@ -228,40 +309,48 @@ export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => 
                   </div>
                 )}
                 {(context.memberContact || activeDraft?.memberContact) && (
-                  <FieldChip label="Contact" value={context.memberContact || activeDraft?.memberContact || ''} />
+                  <AnimatedFieldChip label="Contact" value={context.memberContact || activeDraft?.memberContact || ''} />
                 )}
-                {context.membership && <FieldChip label="Membership" value={context.membership} />}
-                {context.clientsAffected && <FieldChip label="Clients affected" value={context.clientsAffected} />}
+                {context.membership && <AnimatedFieldChip label="Membership" value={context.membership} />}
+                {context.clientsAffected && <AnimatedFieldChip label="Clients affected" value={context.clientsAffected} />}
               </div>
             </div>
           )}
 
+          {/* Session */}
           {hasSession && (
             <div>
               <SectionLabel icon={<Calendar className="h-3.5 w-3.5" />} title="Session" />
               <div className="space-y-1.5">
                 {(context.classType || activeDraft?.classType) && (
-                  <FieldChip label="Class" value={context.classType || activeDraft?.classType || ''} />
+                  <AnimatedFieldChip label="Class" value={context.classType || activeDraft?.classType || ''} />
                 )}
                 {(context.trainer || activeDraft?.trainer) && (
-                  <FieldChip label="Trainer" value={context.trainer || activeDraft?.trainer || ''} />
+                  <AnimatedFieldChip label="Trainer" value={context.trainer || activeDraft?.trainer || ''} />
                 )}
                 {context.classDateTime && (
-                  <FieldChip label="Date/Time" value={(() => {
-                    try { return new Date(context.classDateTime!).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }); }
-                    catch { return context.classDateTime!; }
-                  })()} />
+                  <AnimatedFieldChip
+                    label="Date/Time"
+                    value={(() => {
+                      try {
+                        return new Date(context.classDateTime!).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+                      } catch {
+                        return context.classDateTime!;
+                      }
+                    })()}
+                  />
                 )}
               </div>
             </div>
           )}
 
+          {/* Sentiment & Resolution */}
           {(context.memberSentiment || activeDraft?.sentiment || context.urgencyReason || context.desiredResolution) && (
             <div>
               <SectionLabel icon={<Star className="h-3.5 w-3.5" />} title="Sentiment & Resolution" />
               <div className="space-y-1.5">
                 {(context.memberSentiment || activeDraft?.sentiment) && (
-                  <FieldChip label="Sentiment" value={context.memberSentiment || activeDraft?.sentiment || ''} tone="sentiment" />
+                  <AnimatedFieldChip label="Sentiment" value={context.memberSentiment || activeDraft?.sentiment || ''} tone="sentiment" />
                 )}
                 {context.urgencyReason && (
                   <div className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1.5">
@@ -282,20 +371,32 @@ export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => 
             </div>
           )}
 
+          {/* Description preview */}
+          {hasDescription && (
+            <div>
+              <SectionLabel icon={<FileText className="h-3.5 w-3.5" />} title="Description" />
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+                <p className="text-[11px] leading-relaxed text-slate-600 line-clamp-4">{context.description}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Routing */}
           {(context.assignedTo || activeDraft?.assignedTo || context.department || activeDraft?.department) && (
             <div>
               <SectionLabel icon={<MessageSquare className="h-3.5 w-3.5" />} title="Routing" />
               <div className="space-y-1.5">
                 {(context.assignedTo || context.owner || activeDraft?.assignedTo) && (
-                  <FieldChip label="Assignee" value={context.assignedTo || context.owner || activeDraft?.assignedTo || ''} />
+                  <AnimatedFieldChip label="Assignee" value={context.assignedTo || context.owner || activeDraft?.assignedTo || ''} />
                 )}
                 {(context.department || context.team || activeDraft?.department) && (
-                  <FieldChip label="Department" value={context.department || context.team || activeDraft?.department || ''} />
+                  <AnimatedFieldChip label="Department" value={context.department || context.team || activeDraft?.department || ''} />
                 )}
               </div>
             </div>
           )}
 
+          {/* Conversation summary */}
           {hasDraft && activeDraft?.conversationSummary && (
             <div>
               <SectionLabel icon={<Flame className="h-3.5 w-3.5" />} title="Summary" />
@@ -305,6 +406,24 @@ export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => 
             </div>
           )}
 
+          {/* Missing fields skeleton — only before draft is ready */}
+          {!hasDraft && missingFields.length > 0 && (
+            <div>
+              <SectionLabel icon={<BookOpen className="h-3.5 w-3.5" />} title="Still collecting" />
+              <div className="space-y-1.5">
+                {missingFields.map(({ key, label }) => (
+                  <div
+                    key={key}
+                    className="h-8 w-full rounded-lg border border-dashed border-slate-200 bg-slate-50 flex items-center px-3 animate-pulse"
+                  >
+                    <span className="text-[10px] font-semibold text-slate-300">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Draft ready CTA */}
           {hasDraft && (
             <div className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white p-3">
               <div className="flex items-center gap-2">
@@ -317,6 +436,7 @@ export const LiveTicketBuilder: React.FC<Props> = ({ context, activeDraft }) => 
               </div>
             </div>
           )}
+
         </div>
       </div>
     </div>

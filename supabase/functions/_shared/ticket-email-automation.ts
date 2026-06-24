@@ -1,5 +1,6 @@
 export type TicketEmailAutomationEventType =
-  | 'ticket_assigned';
+  | 'ticket_assigned'
+  | 'ticket_sla_pre_warning';
 
 export type TicketEmailAutomationTicket = {
   id: string;
@@ -22,6 +23,7 @@ type BuildTicketEmailAutomationJobsInput = {
   assignmentTicketIds?: Set<string>;
   now?: Date;
   timeZone?: string;
+  slaWarningThreshold?: number;
 };
 
 const DEFAULT_TIME_ZONE = 'Asia/Kolkata';
@@ -53,6 +55,9 @@ export function ticketEmailAutomationEventKey(
   timeZone = DEFAULT_TIME_ZONE,
 ): string {
   void timeZone;
+  if (eventType === 'ticket_sla_pre_warning') {
+    return `${eventType}:${ticket.id}:${ticket.assigned_to}:${ticket.created_at}:${ticket.sla_due_at}`;
+  }
   return `${eventType}:${ticket.id}:${ticket.assigned_to}:${ticket.created_at}`;
 }
 
@@ -69,12 +74,29 @@ export function isTicketEmailAutomationDueToday(
   );
 }
 
+export function isTicketEmailAutomationSlaPreWarningDue(
+  ticket: TicketEmailAutomationTicket,
+  now = new Date(),
+  threshold = 0.75,
+): boolean {
+  if (!isTicketEmailAutomationOpen(ticket)) return false;
+  const createdAt = new Date(ticket.created_at).getTime();
+  const dueAt = new Date(ticket.sla_due_at).getTime();
+  const nowMs = now.getTime();
+  if ([createdAt, dueAt, nowMs].some((value) => Number.isNaN(value))) return false;
+  if (dueAt <= createdAt || nowMs >= dueAt) return false;
+  const clampedThreshold = Math.max(0.01, Math.min(threshold, 0.99));
+  const warningAt = createdAt + (dueAt - createdAt) * clampedThreshold;
+  return nowMs >= warningAt;
+}
+
 export function buildTicketEmailAutomationJobs({
   tickets,
   existingEventKeys,
   assignmentTicketIds,
   now = new Date(),
   timeZone = DEFAULT_TIME_ZONE,
+  slaWarningThreshold = 0.75,
 }: BuildTicketEmailAutomationJobsInput): TicketEmailAutomationJob[] {
   const jobs: TicketEmailAutomationJob[] = [];
 
@@ -91,8 +113,17 @@ export function buildTicketEmailAutomationJobs({
       });
     }
 
-    void now;
-    void timeZone;
+    const slaWarningKey = ticketEmailAutomationEventKey('ticket_sla_pre_warning', ticket, timeZone);
+    if (
+      isTicketEmailAutomationSlaPreWarningDue(ticket, now, slaWarningThreshold) &&
+      !existingEventKeys.has(slaWarningKey)
+    ) {
+      jobs.push({
+        eventType: 'ticket_sla_pre_warning',
+        eventKey: slaWarningKey,
+        ticketId: ticket.id,
+      });
+    }
   }
 
   return jobs;

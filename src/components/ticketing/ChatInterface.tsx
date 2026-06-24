@@ -28,8 +28,6 @@ import {
   captureMemberFeedbackFromText,
   getIntakeFieldDefinition,
   getMissingIntakeFields,
-  inferIntakeContextFromText,
-  isProtectedEntityField,
   isMissingIntakeValue,
   IntakeContext,
 } from '@/lib/intake-rules';
@@ -69,11 +67,9 @@ import { buildDuplicatePatternInsights, buildVoiceExtractionHints, optimizeIntak
 import { getGreetingQuickActions, isCasualGreeting } from '@/lib/athena-chat-intent';
 import { shouldUseOptionButtons } from '@/lib/intake-option-buttons';
 import {
-  buildIntakeConversationPlan,
   buildNaturalSingleFieldPrompt,
   getReporterFirstName,
   limitConversationalFieldBatch,
-  serializeConversationPlan,
 } from '@/lib/intake-conversation-plan';
 import {
   htmlForChatTranscript,
@@ -716,6 +712,7 @@ function normalizeInferredContext(input: unknown): Partial<DetailContext> {
     if (typeof candidate === 'string' && candidate.trim()) next[key] = candidate.trim();
   };
 
+  // Classification fields
   assignString('intakeRoute');
   assignString('requestType');
   assignString('category');
@@ -729,6 +726,15 @@ function normalizeInferredContext(input: unknown): Partial<DetailContext> {
   assignString('membership');
   assignString('classImpactType');
   assignString('classImpactDetails');
+  // Entity/location fields — previously missing, causing the AI's inferences to be silently dropped
+  assignString('studio');
+  assignString('trainer');
+  assignString('memberName');
+  assignString('memberContact');
+  assignString('classType');
+  assignString('classDateTime');
+  assignString('incidentDateTime');
+  assignString('description');
 
   return next;
 }
@@ -778,12 +784,10 @@ function pruneDetailForm(form: DetailForm | null, ctx: DetailContext): DetailFor
 
 function filterAiDetailForm(form: DetailForm | null, ctx: DetailContext, requiredFields: Set<string>): DetailForm | null {
   if (!form) return null;
-  // AI drives, guard is a floor. Keep the AI's contextual questions (canonical + invented).
-  // Only drop reportedBy (supplied by signed-in user) and member/class pickers the guard did
-  // not flag, so a pure facility/ops incident never renders a member/session search.
+  // AI drives the intake. Keep its contextual questions instead of filtering them
+  // through local deterministic guard rules.
   const fields = form.fields.map((field) => {
     if (field.id === 'reportedBy') return false;
-    if (isProtectedEntityField(field.id) && !requiredFields.has(field.id)) return false;
     return requiredFields.has(field.id) ? { ...field, required: true } : field;
   }).filter(Boolean) as DetailFormField[];
 
@@ -1327,6 +1331,23 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
     return () => window.clearTimeout(handle);
   }, []);
 
+  // Prefetch both session caches on mount: hosted (private) and all-sessions ([]).
+  // Dropdowns read from momenceSessionSearchCache and skip their own fetch when warm.
+  useEffect(() => {
+    const prefetch = (types: string[]) => {
+      const cacheKey = momenceSessionDropdownCacheKey(types);
+      if (momenceSessionSearchCache.has(cacheKey)) return;
+      loadMomenceSessionsProgressively('', { types }, (sessions) => {
+        const existing = momenceSessionSearchCache.get(cacheKey) ?? [];
+        momenceSessionSearchCache.set(cacheKey, mergeMomenceSessionOptions(existing, sessions));
+      }).then((sessions) => {
+        momenceSessionSearchCache.set(cacheKey, sessions);
+      }).catch(() => {});
+    };
+    prefetch(HOSTED_CLASS_SESSION_TYPES);
+    prefetch([]);
+  }, []);
+
   useEffect(() => {
     const maybeCtor = (window as Window & { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition
       || (window as Window & { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
@@ -1552,33 +1573,10 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
     if (!activeContext.initialReport && !/^here are the missing details:/i.test(text.trim())) {
       activeContext = { ...activeContext, initialReport: issueText };
     }
-    const localInference = inferIntakeContextFromText(issueText, activeContext);
-    if (Object.keys(localInference).length > 0) {
-      activeContext = { ...activeContext, ...localInference, reportedBy: reporterName };
-      setContext(activeContext);
-    }
     if (reporterFirstName) {
       activeContext = { ...activeContext, reporterFirstName };
     }
-    if (
-      !contextOverride &&
-      !activeContext.conversationPlan &&
-      !/^here are the missing details:/i.test(text.trim()) &&
-      issueText.trim().length > 8
-    ) {
-      const plan = buildIntakeConversationPlan({
-        initialText: issueText,
-        context: activeContext,
-        reporterName,
-      });
-      activeContext = {
-        ...activeContext,
-        reporterFirstName: plan.reporterFirstName || reporterFirstName,
-        conversationPlan: serializeConversationPlan(plan),
-      };
-    }
     activeContext.reportedBy = reporterName;
-    activeContext = pruneEntityContextForIssue(activeContext, issueText);
     activeContext.reportedBy = reporterName;
     setContext(activeContext);
     const preamble = buildContextPreamble(activeContext);
@@ -1609,8 +1607,6 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         ]);
       }
 
-      const missingFields = requiredFieldsForIssue(activeContext);
-
       const { data, error } = await withTimeout(
         invokeTicketingFunction<AiIntakeResponse>('ticket-ai-chat', {
           body: buildAthenaDraftRequestBody({
@@ -1620,12 +1616,6 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
             preamble,
             conversationId,
             context: activeContext,
-            intakeContract: {
-              missingFields,
-              fields: missingFields
-                .map((id) => getDetailField(id))
-                .filter(Boolean),
-            },
           }),
         }),
         ATHENA_CHAT_RESPONSE_TIMEOUT_MS,
@@ -1641,18 +1631,16 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
 
       const inferredContext = normalizeInferredContext(data?.inferredContext);
       let responseContext = mergeInferredContext(activeContext, inferredContext, data?.urgencyReason);
-      if (Object.keys(inferredContext).length > 0 || data?.urgencyReason) {
-        responseContext = { ...responseContext, reportedBy: reporterName };
-        activeContext = responseContext;
-        setContext(responseContext);
-      }
+      // Always sync context after every AI response — not just when inferredContext has keys.
+      // This ensures entity fields (studio, trainer, etc.) the AI inferred are persisted for the next turn.
+      responseContext = { ...responseContext, reportedBy: reporterName };
+      activeContext = responseContext;
+      setContext(responseContext);
 
       const normalizedAiTicket = data?.ticket ? normalizeDraftForReview(data.ticket, responseContext, text) : null;
-      const remainingMissingFields = requiredFieldsForIssue(responseContext, normalizedAiTicket || undefined);
+      const remainingMissingFields: string[] = [];
       const requiredFieldSet = new Set(remainingMissingFields);
-      const incompleteDraftForm = detailFormForIncompleteDraft(normalizedAiTicket, responseContext);
-      const localMissingForm = normalizedAiTicket ? null : detailFormForContext(responseContext);
-      const deterministicForm = incompleteDraftForm || localMissingForm;
+      const deterministicForm = null;
       const acceptsAiDetailForm = shouldAcceptAiDetailForm({
         remainingMissingFieldCount: remainingMissingFields.length,
         aiNeedsMoreInfo: data?.needsMoreInfo,
@@ -1665,13 +1653,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
           )
         : null;
       const detailForm = mergeDetailForms(deterministicForm, normalizedForm);
-      const parsedQuestionForm = acceptsAiDetailForm && !detailForm && !normalizedAiTicket
-        ? pruneDetailForm(
-            filterAiDetailForm(detailFormFromQuestionText(data?.reply || '', responseContext), responseContext, requiredFieldSet),
-            responseContext
-          )
-        : null;
-      const finalDetailForm = batchDetailFormForConversation(detailForm || parsedQuestionForm);
+      const finalDetailForm = batchDetailFormForConversation(detailForm);
       const holdDraftForMoreInfo = shouldHoldDraftForMoreInfo({
         hasDetailForm: Boolean(finalDetailForm),
         remainingMissingFieldCount: remainingMissingFields.length,
@@ -1699,7 +1681,9 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
       }
       const singleField = finalDetailForm?.fields.length === 1 ? finalDetailForm.fields[0] : null;
       const singleFieldNeedsPicker = singleField
-        ? ['memberName', 'memberContact', 'classType', 'sessionId', 'membership'].includes(singleField.id)
+        ? (['memberName', 'memberContact', 'classType', 'sessionId', 'membership'].includes(singleField.id) ||
+            singleField.type === 'date' ||
+            singleField.type === 'datetime-local')
         : false;
       const singleFieldChips = singleField && !singleFieldNeedsPicker && singleField.type === 'select'
         ? chipsForSingleField(singleField, responseContext)
@@ -1707,7 +1691,8 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
       const renderSingleFieldAsChat = Boolean(
         singleField &&
         !singleFieldNeedsPicker &&
-        (singleField.type !== 'select' || singleFieldChips.length > 0)
+        singleField.type === 'select' &&
+        singleFieldChips.length > 0
       );
       const assistantContent = singleField
         ? buildNaturalSingleFieldPrompt({
@@ -1719,7 +1704,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
           : ticket
             ? "Looks good — I've drafted the ticket below. Take a quick look before publishing."
             : data?.reply || "Hmm, I didn't quite catch that. Could you tell me a bit more?";
-      setPendingSingleField(singleField && !singleFieldNeedsPicker && singleField.type !== 'select' ? singleField : null);
+      setPendingSingleField(null);
       await sleep(writingPauseMs(assistantContent));
       if (requestEpoch !== activeChatEpochRef.current || requestNonce !== requestNonceRef.current) return;
       const assistantMsg: Message = {
@@ -1745,10 +1730,12 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
       if (requestEpoch !== activeChatEpochRef.current || requestNonce !== requestNonceRef.current) return;
       const message = getDisplayError(e, 'Ticket AI chat failed');
       if (message.includes(ATHENA_CHAT_TIMEOUT_MESSAGE)) {
-        const timeoutForm = batchDetailFormForConversation(detailFormForContext(activeContext));
+        const timeoutForm = null;
         const singleField = timeoutForm?.fields.length === 1 ? timeoutForm.fields[0] : null;
         const singleFieldNeedsPicker = singleField
-          ? ['memberName', 'memberContact', 'classType', 'sessionId', 'membership'].includes(singleField.id)
+          ? (['memberName', 'memberContact', 'classType', 'sessionId', 'membership'].includes(singleField.id) ||
+              singleField.type === 'date' ||
+              singleField.type === 'datetime-local')
           : false;
         const singleFieldChips = singleField && !singleFieldNeedsPicker && singleField.type === 'select'
           ? chipsForSingleField(singleField, activeContext)
@@ -1756,7 +1743,8 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         const renderSingleFieldAsChat = Boolean(
           singleField &&
           !singleFieldNeedsPicker &&
-          (singleField.type !== 'select' || singleFieldChips.length > 0)
+          singleField.type === 'select' &&
+          singleFieldChips.length > 0
         );
         const fallbackTicket = timeoutForm ? null : buildClientDraft(activeContext, text);
         const fallbackContent = singleField
@@ -1765,7 +1753,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
             ? `${reporterFirstName ? `${reporterFirstName}, ` : ''}I’m taking a little longer than usual — continuing locally so you don’t lose momentum.`
             : 'I’m taking a little longer than usual, so I’ve prepared a local draft for you to review.';
 
-        setPendingSingleField(singleField && !singleFieldNeedsPicker && singleField.type !== 'select' ? singleField : null);
+        setPendingSingleField(null);
         const fallbackMessage: Message = {
           id: `timeout-${Date.now()}`,
           role: 'assistant',
@@ -1866,7 +1854,6 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
     const detailLines = Object.entries(values)
       .filter(([key, value]) => (!form || allowedValueKeys.has(key)) && value.trim())
       .map(([key, value]) => `${getDetailField(key)?.label || fieldLabels.get(key) || key}: ${value}`);
-    nextContext = pruneEntityContextForIssue(nextContext, detailLines.join('\n'), allowedValueKeys);
     nextContext.reportedBy = reporterName;
     setContext(nextContext);
     setPendingSingleField(null);
@@ -1876,30 +1863,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
   const publishDraft = async (messageId: string, draft: DraftTicket, trainerEvaluation?: TrainerEvaluationInput) => {
     if (loading || publishingRef.current.has(messageId)) return;
     const publishableDraft = mergeDraftWithContext(draft, context);
-    const explicitlyUsedFields = new Set<string>();
-    if (publishableDraft.memberName || publishableDraft.memberContact) MEMBER_ENTITY_KEYS.forEach((field) => explicitlyUsedFields.add(field));
-    if (publishableDraft.classType || publishableDraft.classDateTime || publishableDraft.trainer) SESSION_ENTITY_KEYS.forEach((field) => explicitlyUsedFields.add(field));
-    const publishContext = pruneEntityContextForIssue(
-      contextFromDraft(publishableDraft, context),
-      `${publishableDraft.title}\n${publishableDraft.description}`,
-      explicitlyUsedFields
-    );
-    const missingDetailsForm = detailFormForIncompleteDraft(publishableDraft, publishContext);
-    if (missingDetailsForm) {
-      setPendingSingleField(null);
-      setActiveDraftReviewMessageId(null);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `publish-required-${Date.now()}`,
-          role: 'assistant',
-          content: 'Almost there! Just a few required details are missing — fill them in below and we can publish. 🙂',
-          detailForm: missingDetailsForm,
-          published: false,
-        },
-      ]);
-      return;
-    }
+    const publishContext = contextFromDraft(publishableDraft, context);
     publishingRef.current.add(messageId);
     setLoading(true);
     try {
@@ -2271,9 +2235,9 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
                 <div className="flex flex-wrap gap-2">
                   {[
                     'A member complained about the AC at Bandra studio',
-                    'Member Priya Mehta wants a refund for her last class',
-                    'Locker room wasn’t clean at Kemps today',
-                    'Equipment issue — treadmill broken at Bengaluru',
+                    'Member Smita Modi wants a refund for her last class',
+                    'Member Preeti Ambani reported money theft from the locker room at Kemps',
+                    'Equipment issue - Cycle monitor not working at the Bandra Studio',
                     'Instructor arrived late for the barre class',
                   ].map((starter) => (
                     <button
@@ -3929,6 +3893,7 @@ const InstructorEvaluationChatbox: React.FC<{
         <div className="md:col-span-2">
           <MomenceSessionDropdownField
             multi={false}
+            sessionTypes={context.category === 'Hosted Class & Partnerships' ? HOSTED_CLASS_SESSION_TYPES : []}
             values={{ sessionId, classType, classDateTime: reviewPeriod, trainer: instructor, studio }}
             onChange={(sessions) => {
               const session = sessions[0];
@@ -4298,6 +4263,7 @@ const DetailCaptureForm: React.FC<{
           <MomenceSessionDropdownField
             values={values}
             multi={false}
+            sessionTypes={initialContext.category === 'Hosted Class & Partnerships' ? HOSTED_CLASS_SESSION_TYPES : []}
             onChange={(sessions) => {
               setValues((current) => ({
                 ...current,
@@ -4970,7 +4936,7 @@ const MomenceSessionDropdownField: React.FC<{
   onChange: (sessions: MomenceSessionOption[]) => void | Promise<void>;
   multi?: boolean;
   sessionTypes?: string[];
-}> = ({ values, onChange, multi = true, sessionTypes = HOSTED_CLASS_SESSION_TYPES }) => {
+}> = ({ values, onChange, multi = true, sessionTypes = [] }) => {
   const [options, setOptions] = useState<MomenceSessionOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

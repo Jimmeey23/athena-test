@@ -173,7 +173,7 @@ describe('ChatInterface intake flow', () => {
     await user.click(sendButton as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(screen.getByText(/Just a couple more details and we'll have a clean draft ready/i)).toBeTruthy();
+      expect(hoisted.invokeTicketingFunction).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByText(/I drafted the ticket below/i)).toBeNull();
     expect(screen.queryByText(/Ticket draft ready for review/i)).toBeNull();

@@ -1,5 +1,6 @@
 export type TicketEmailEventType =
-  | 'ticket_assigned';
+  | 'ticket_assigned'
+  | 'ticket_sla_pre_warning';
 
 export interface TicketEmailSummary {
   id: string;
@@ -45,6 +46,12 @@ const EVENT_COPY: Record<TicketEmailEventType, { label: string; headline: string
     headline: 'A new Athena ticket has been assigned',
     tone: '#0f766e',
     summary: 'Please review the ticket context and take ownership of the next action.',
+  },
+  ticket_sla_pre_warning: {
+    label: 'SLA pre-warning',
+    headline: 'An Athena ticket is approaching its SLA',
+    tone: '#b45309',
+    summary: 'This ticket has crossed 75% of its SLA window. Please update the owner action or resolution notes before it breaches.',
   },
 };
 

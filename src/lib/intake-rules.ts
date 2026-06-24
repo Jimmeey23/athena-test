@@ -396,6 +396,9 @@ function shouldRequireNamedMemberContext(context: IntakeContext, issueText: stri
   const category = context.category || '';
   if (PHYSICAL_ONLY_CATEGORIES.has(category)) return false;
 
+  // Always require member lookup when clients are confirmed affected
+  if (hasConfirmedAffectedClients(context.clientsAffected)) return true;
+
   const entityText = [
     context.initialReport,
     context.description,
@@ -403,6 +406,7 @@ function shouldRequireNamedMemberContext(context: IntakeContext, issueText: stri
   ].filter(Boolean).join(' ').toLowerCase();
   const lower = [
     entityText,
+    issueText,
     context.intakeRoute,
     context.category,
     context.subCategory,
@@ -412,7 +416,9 @@ function shouldRequireNamedMemberContext(context: IntakeContext, issueText: stri
   const needsPersonalFollowUp =
     /refund|billing|payment|membership|package|freeze|roll\s?over|extension|renewal|cancel|complain|complaint|follow-up|follow up|contact|whatsapp|email|phone|profile|account/.test(lower);
 
-  return mentionsMember && needsPersonalFollowUp;
+  // Any mention of a member/client OR any member-adjacent action requires lookup —
+  // staff must never submit a ticket about a specific person without identifying them first.
+  return mentionsMember || needsPersonalFollowUp;
 }
 
 function shouldRequireComplaintResolution(context: IntakeContext, issueText: string): boolean {
@@ -717,7 +723,7 @@ function getIssueProfileFieldIds(context: IntakeContext): string[] {
     return ['equipmentSymptom', 'operationalImpact', 'currentWorkaround', 'resolutionRequirement'];
   }
 
-  if (/door|lock|latch|handle|hinge|access|closing|opening/.test(issueText) || subCategory === 'Door Lock Issues') {
+  if (/\bdoor\b|\block\b|latch|hinge|\baccess\b|closing|opening/.test(issueText) || subCategory === 'Door Lock Issues') {
     return ['lockFaultType', 'accessStatus', 'securityRisk', 'resolutionRequirement'];
   }
 
@@ -825,7 +831,7 @@ export function inferIntakeContextFromText(text: string, context: IntakeContext 
         : /audio|speaker|mic|sound/.test(lower) ? 'Audio System Malfunction'
         : /leak|plumbing|drain|flush|sewage|overflow|clog|pipe/.test(lower) ? 'Plumbing Leaks'
         : /pest|cockroach|rat|rodent|insect|ant/.test(lower) ? 'Pest Control Needed'
-        : /door|lock|handle|hinge/.test(lower) ? 'Door Lock Issues'
+        : /\bdoor\b|\block\b|latch|hinge/.test(lower) ? 'Door Lock Issues'
         : /machine|washing|dryer|equipment|broken|not working|malfunction|faulty/.test(lower) ? 'Broken Equipment'
         : 'General Maintenance Delays';
     } else if (/odour|odor|smell|stench|ventilation|air quality|locker|shower|washroom|toilet|steam room|valet|parking|wi-fi|wifi|boutique|retail|amenity|amenities|cleanliness|hygiene|clean|dirty/.test(lower)) {

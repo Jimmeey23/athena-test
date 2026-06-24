@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.4';
 import { callJsonAi, type AiProvider } from '../_shared/ai-provider.ts';
 import { buildGuardFieldDefinition, getGuardFieldType } from '../_shared/intake-fields.ts';
+import { buildKnowledgeSearchText, embedKnowledgeText, formatKnowledgeContext, type KnowledgeChunk } from '../_shared/knowledge-base.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -59,6 +60,7 @@ type RequestBody = {
   dataQualityNotes?: string[];
   assumptions?: string[];
   aiProvider?: AiProvider;
+  embeddingProvider?: 'openai' | 'deepseek' | 'auto';
 };
 
 // Authoritative Athena prompt. The frontend sends a compact prompt profile, not prompt text.
@@ -91,14 +93,17 @@ FORM DESIGN RULES:
 - Be warm, human, and reassuring — especially when staff report urgent or distressing issues. Match their tone and energy level.
 - If the user only greets you or uses small talk, respond naturally and warmly. Ask what they want to log. Do not open a ticket form from a greeting.
 - Use plain operational language: member, client, studio, class/session, instructor, category, issue type. Avoid heavy brand lingo unless quoting source data.
-- Keep the chat conversational: ask 1-2 questions at a time. For a single select question, write it as a chat message with option buttons — not a form.
+- Prefer structured controls over plain text. If the answer can be chosen from known options, constants, statuses, priorities, categories, studios, instructors, class impact types, sentiment, yes/no, resolution status, affected clients, request types, or follow-up preferences, use type "select" with options. Do not ask those as free text.
+- For a single bounded select question, return it as suggestedChips with the same field/value options so the frontend shows button options instead of a text box. Use detailForm only when multiple fields are needed or a picker/date/number/textarea is needed.
 - Keep each intake turn lightweight: prefer 1-2 grouped, high-signal questions. Add extra required fields only when the owner truly cannot act without them.
 - Field labels must describe exactly what you're asking, specific to this incident — never generic.
-- For bounded answer spaces, use select with options tailored to the situation.
-- For open descriptions, use textarea with a placeholder hint that reflects the item being reported.
-- Use datetime-local for timestamps, date for date-only, number for counts.
+- For bounded answer spaces, use select with options tailored to the situation. Options should be concise operational labels, not long paragraphs.
+- For dates, use date. For timestamps or session/incident timing, use datetime-local. For counts, durations, minutes late, amounts, or numeric quantities, use number. Never ask constants, dates, times, counts, or amounts through a plain text field.
+- Use text only for genuinely unknown names/references that do not have a picker. Use textarea only for open narrative context such as reason, observed issue detail, or member wording that cannot be captured by options.
 - Field IDs must be snake_case and self-describing (e.g. door_fault_type, current_access_situation).
 - Never ask for reportedBy — the frontend supplies it from the signed-in user.
+- FIELD TYPE ENFORCEMENT (critical): Never use type "text" for: (a) any date or time — use "date" or "datetime-local"; (b) any field with a bounded set of options — use "select" with options array; (c) studio location — use "select" with the known studio list from master data. A text input for date or location will render as a plain text box with no picker — this is always wrong.
+- DO NOT ASK IRRELEVANT QUESTIONS: Before adding any field, ask: "Would the ticket owner be unable to resolve or route this ticket without this answer?" If no, omit the field. Never ask for studio/location if the report is not studio-specific. Never ask for date/time if the incident is not time-sensitive. Never ask for member details on internal/facility issues unless a member is directly involved.
 - If staff seem stressed or describe something urgent, acknowledge it briefly before asking the next question.
 
 WHEN TO DRAFT IMMEDIATELY vs WHEN TO ASK FIRST:
@@ -113,12 +118,9 @@ INTAKE INFERENCE:
 - Always populate inferredContext with category, subCategory, intakeRoute, and priority once inferred, even while asking for more details
 
 ENTITY FIELDS — memberName, memberContact, classType, classDateTime, trainer, sessionId, membership:
-These fields refer to a specific named person or class booking in Momence. Include them ONLY when the incident is directly about or requires one.
-Ask yourself: does resolving this issue require knowing who a specific member is, or which specific class booking it relates to?
-If the answer is no — do not include entity fields.
-Before the client-impact check, issues that do not need entity fields include anything physical (door, machine, AC, plumbing, lighting, pest), ambient environment, tech/ops systems, app or Wi-Fi issues.
-Issues that need entity fields: a named member's billing request, a freeze or rollover for a specific person, a complaint about how a trainer treated a named member in a specific class.
-For membership/billing requests: require member selection only when the member is named or otherwise identifiable. Ask about package, purchase, dates, or payment only when the resolution decision actually depends on that specific record.
+These fields refer to specific Momence records. Use them when the user's message or current context makes the record useful for resolving the ticket.
+Do not apply a physical-vs-member checklist. A facility issue, class issue, billing issue, or feedback note may or may not need entity context depending on what the staff member actually reported.
+When unsure, ask the most natural clarifying question rather than forcing a generic picker.
 
 MEMBER COMMERCIAL / CLASS-ACCESS INCIDENTS:
 For commercial, refund, billing, membership, class-entry, and policy-dispute reports, reason from the current issue rather than a fixed verification checklist.
@@ -132,22 +134,11 @@ ROUTING AND MASTER DATA:
 - Use provided routingRules, employees, departments, and locations as authoritative — never invent names, escalation paths, or SLAs
 - Member and class/session fields must use Momence-powered UI pickers, not plain text inputs
 
-CLIENT IMPACT CHECK:
-- Always confirm clientsAffected before drafting or publishing any ticket. Ask it as a lightweight conversational button question by itself when unanswered.
-- This is required even for internal operational/facility issues, because the staff member must confirm whether members were directly or indirectly affected.
-- Use field ID clientsAffected with select options: Yes - directly affected, Yes - indirectly affected, Yes - directly and indirectly affected, No clients affected, Not confirmed yet.
-- Do not draft or publish when clientsAffected is unanswered.
-- If clientsAffected starts with "Yes", require memberName so the frontend renders Momence member search. Staff may select one or multiple affected clients from Momence.
-- This client-impact rule is the exception to the usual physical/ops entity-field restriction: even an operational issue needs memberName when affected clients are confirmed.
-- If the report or selected context says a class/session/schedule was affected, require classType, classImpactType, and classImpactDetails after client impact is confirmed. The owner needs the exact Momence session plus whether the class was delayed, paused, moved, cancelled, disrupted, or otherwise affected.
-- If clientsAffected is "No clients affected" or "Not confirmed yet", do not ask for memberName unless the user later confirms affected clients.
-
-RESOLUTION REQUIRED FINAL GATE:
-- Before drafting or publishing any ticket, ask exactly: "Does this ticket require a resolution?"
-- Use field ID resolutionRequired, type select, required true, options: Yes, No.
-- Ask this as the final missing field after all other intake details are complete.
-- If resolutionRequired is Yes, route the ticket normally to the appropriate owner, department, and SLA.
-- If resolutionRequired is No, the ticket is record-only: assign the department/team only, do not assign a specific owner, do not start an SLA, and mark it as record-only/no-resolution-required.
+DYNAMIC INTAKE:
+- Do not follow a fixed checklist. Ask only the next question that is useful for the specific report.
+- Ask about affected clients, members, sessions, packages, resolution requirement, or follow-up only when the user's message makes that context relevant.
+- If the initial report is already clear enough to route and act on, draft immediately instead of collecting generic fields.
+- If context is missing, ask 1-2 specific questions that resolve the most important ambiguity.
 
 ANTI-LOOP RULE (CRITICAL — read before every response):
 - Look at the last assistant message. If it asked a conversational question (not a detailForm), and the user has replied with anything at all, that question is ANSWERED. Accept the reply, move on. Never re-ask a question from a previous assistant turn.
@@ -155,9 +146,7 @@ ANTI-LOOP RULE (CRITICAL — read before every response):
 - If a user gives a short or imperfect answer to your previous question (e.g. "wants refund", "music loud", "too cold"), accept it. Do not ask again. Synthesise the answer into your draft.
 - Never ask the same logical question twice under any wording variation.
 
-CONVERSATION PLAN MEMORY:
-- When context.conversationPlan exists, treat it as the durable plan for this conversation, not a recent-message summary.
-- Follow that plan to choose the next unanswered question. Do not rely only on the last few messages.
+CONVERSATION STYLE:
 - Ask one natural question at a time when only one field is missing. Do not describe it as a form — just ask naturally.
 - Keep replies warm, friendly, and concise. Staff are busy; be efficient but human.
 - Use context.reporterFirstName naturally — especially in greetings, transitions, or when asking for something important. Don't repeat their name in every single message.
@@ -913,6 +902,47 @@ function logDecisionTrace(trace: IntakeDecisionTrace): void {
   console.log('[athena-intake-trace]', JSON.stringify(trace));
 }
 
+/**
+ * Scans the conversation history to find fields that were asked by the assistant
+ * and answered by the user in free text. Returns a set of field IDs considered
+ * "conversationally answered" so the guard doesn't re-add them to the form.
+ *
+ * Strategy: if the previous assistant turn contained a conversational question
+ * referencing a field concept, and the user replied with any non-trivial text,
+ * treat that field as answered. This prevents the anti-loop rule from being
+ * undermined by the deterministic guard.
+ */
+function extractConversationallyAnsweredFields(
+  messages: ChatMessage[],
+  context: Record<string, unknown>,
+): Set<string> {
+  const answered = new Set<string>();
+  // Fields already in context are answered by definition
+  const CHECKABLE: Array<[string, RegExp]> = [
+    ['studio', /which studio|what studio|which location|which branch|studio location/i],
+    ['trainer', /which (trainer|instructor)|who (was|is) the (trainer|instructor)|instructor('s)? name/i],
+    ['clientsAffected', /were (any )?clients? affected|did (any )?members? (experience|notice)|client impact/i],
+    ['incidentDateTime', /when (did|was|did you notice)|what time|approx(imate)? (date|time)|incident (date|time)/i],
+    ['category', /what (type|kind) of (issue|problem)|which category/i],
+    ['priority', /how (urgent|critical)|urgency level|what priority/i],
+    ['resolutionRequired', /does (this|the) ticket require a resolution|resolution required/i],
+  ];
+  // Walk pairs: assistant asks → user replies
+  for (let i = 0; i < messages.length - 1; i += 1) {
+    const assistantMsg = messages[i];
+    const userMsg = messages[i + 1];
+    if (assistantMsg.role !== 'assistant' || userMsg.role !== 'user') continue;
+    const userReply = cleanString(userMsg.content);
+    if (!userReply || userReply.length < 2) continue;
+    for (const [fieldId, pattern] of CHECKABLE) {
+      if (pattern.test(assistantMsg.content) && !cleanString(context[fieldId])) {
+        answered.add(fieldId);
+      }
+    }
+  }
+  return answered;
+}
+
 function safeStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map((item) => cleanString(item)).filter(Boolean).slice(0, 8);
@@ -935,7 +965,7 @@ function recommendedResolutionStepsForDraft(draft: DraftTicket): string[] {
       'Confirm the member requested outcome, amount or credit impact, and preferred follow-up channel.',
       'Document the approved resolution path, owner, and response deadline in the ticket.',
     );
-  } else if (/facility|equipment|maintenance|repair|studio|temperature|clean|ac|plumbing|electrical|door|lock|tool|bike|machine/.test(combined)) {
+  } else if (/facility|equipment|maintenance|repair|studio|temperature|clean|ac|plumbing|electrical|\bdoor\b|\block\b|tool|bike|machine/.test(combined)) {
     steps.push(
       'Confirm the exact studio space, equipment/tool, fault state, and current operational impact.',
       'Assign the studio operations owner to inspect or coordinate the fix before the next affected session.',
@@ -1067,7 +1097,42 @@ function mergeGuardFloorIntoForm(
   return { ...form, fields: [...form.fields, ...guardFieldEntries] };
 }
 
-async function askAiForIntake(body: RequestBody, instructions: string): Promise<AiIntakeResponse | null> {
+function vectorLiteral(values: number[]): string {
+  return `[${values.map((value) => Number(value).toFixed(8)).join(',')}]`;
+}
+
+async function fetchKnowledgeContext(body: RequestBody, context: Record<string, unknown>): Promise<string> {
+  const searchText = buildKnowledgeSearchText({
+    messages: body.messages || [],
+    context,
+  });
+  if (!searchText.trim()) return '';
+
+  const provider = body.embeddingProvider === 'deepseek' ? 'deepseek' : body.embeddingProvider === 'openai' ? 'openai' : null;
+  const embedded = await embedKnowledgeText((name) => Deno.env.get(name) || undefined, fetch, searchText, provider);
+  if (!embedded) return '';
+
+  const supabaseUrl = Deno.env.get('TICKETING_SUPABASE_URL') || Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('TICKETING_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceRoleKey) return '';
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await admin.rpc('match_knowledge_chunks', {
+    query_embedding: vectorLiteral(embedded.embedding),
+    match_count: 5,
+    similarity_threshold: 0.2,
+  });
+  if (error) {
+    console.warn('Knowledge retrieval failed:', error.message);
+    return '';
+  }
+
+  return formatKnowledgeContext((data || []) as KnowledgeChunk[]);
+}
+
+async function askAiForIntake(body: RequestBody, instructions: string, knowledgeContext = ''): Promise<AiIntakeResponse | null> {
   const result = await callJsonAi((name) => Deno.env.get(name) || undefined, fetch, {
     provider: body.aiProvider,
     temperature: 0.2,
@@ -1075,25 +1140,28 @@ async function askAiForIntake(body: RequestBody, instructions: string): Promise<
       instructions,
       '',
       'Return JSON only using this schema:',
-      '{"needsMoreInfo": boolean, "reply": string, "inferredContext": {"intakeRoute": string, "category": string, "subCategory": string, "priority": string, "clientsAffected": string, "classImpactType": string, "memberSentiment": string, "desiredResolution": string, "membership": string}, "urgencyReason": string, "missingFields": string[], "publishable": boolean, "detailForm": {"title": string, "description": string, "fields": [{"id": string, "label": string, "type": "select|text|textarea|date|datetime-local|number", "required": boolean, "options": string[]}], "submitLabel": string}, "ticket": {"title": string, "description": string, "category": string, "subCategory": string, "priority": string, "studio": string, "metadata": {"recommendedResolutionSteps": string[]}}|null, "suggestedChips": []}',
+      '{"needsMoreInfo": boolean, "reply": string, "inferredContext": {"intakeRoute": string, "category": string, "subCategory": string, "priority": string, "studio": string, "clientsAffected": string, "classImpactType": string, "memberSentiment": string, "desiredResolution": string, "membership": string}, "urgencyReason": string, "missingFields": string[], "publishable": boolean, "detailForm": {"title": string, "description": string, "fields": [{"id": string, "label": string, "type": "select|text|textarea|date|datetime-local|number", "required": boolean, "options": string[]}], "submitLabel": string}, "ticket": {"title": string, "description": string, "category": string, "subCategory": string, "priority": string, "studio": string, "metadata": {"recommendedResolutionSteps": string[]}}|null, "suggestedChips": []}',
       '',
       'ANTI-LOOP (CRITICAL): Check the last assistant message in the messages array. If it was a plain conversational question and the user replied, that question is ANSWERED — do not re-ask it. Never ask for "member\'s own words", "verbatim report", or any paraphrase — the conversation history already contains this. Accept any user reply (even one word) and move on.',
       'Master-data fields must use these exact IDs when needed: intakeRoute, category, subCategory, clientsAffected, studio, trainer, classType, membership, memberName, memberContact, priority, description, desiredResolution, incidentDateTime, memberSentiment, momencePurchaseContext, classImpactType, classImpactDetails.',
       'Do not ask for reportedBy; the frontend supplies it from the signed-in user.',
-      'For issue-specific fields, create clear snake_case IDs prefixed by the category or subcategory, and include options for select fields.',
+      'For issue-specific fields, create clear snake_case IDs prefixed by the category or subcategory. Prefer select fields with options for every bounded answer. Use text/textarea only when the value is genuinely open-ended.',
+      'Never ask constants, dates, timestamps, counts, amounts, priority, category, studio, sentiment, class impact, clients affected, status, or resolution yes/no as plain text. Use select/date/datetime-local/number.',
+      'When exactly one select field is needed, prefer suggestedChips for that field so the UI renders button options. Keep detailForm null in that case unless a Momence picker is required.',
       'Infer category and subCategory from the report whenever possible. Ask for category or subCategory only when the text is genuinely ambiguous after using the approved master data.',
-      `Always use clientsAffected as a required select before drafting or publishing; valid values are: ${CLIENTS_AFFECTED_OPTIONS.join(', ')}.`,
-      'If clientsAffected starts with "Yes", require memberName so the frontend renders Momence member search for the affected clients.',
-      `If a class/session/schedule was affected, require classType, classImpactType, and classImpactDetails. classImpactType options: ${CLASS_IMPACT_TYPE_OPTIONS.join(', ')}.`,
+      `Use clientsAffected only when member/client impact is relevant; valid values are: ${CLIENTS_AFFECTED_OPTIONS.join(', ')}.`,
+      'If clientsAffected starts with "Yes" and specific affected members matter for resolution, use memberName so the frontend renders Momence member search.',
+      `If a class/session/schedule was materially affected and the owner needs the session record, use classType, classImpactType, and classImpactDetails. classImpactType options: ${CLASS_IMPACT_TYPE_OPTIONS.join(', ')}.`,
       'If memberName/memberContact is needed, use memberName so the frontend renders Momence member search.',
       'If class/session details are needed, use classType so the frontend renders Momence session search.',
-      'Do not include memberName, memberContact, classType, sessionId, classDateTime, or trainer in detailForm or ticket unless those fields are necessary for the described incident.',
+      'Use memberName, memberContact, classType, sessionId, classDateTime, or trainer whenever the conversation context makes those records useful; otherwise ask a natural clarifying question.',
+      'If knowledgeContext contains relevant SOP, policy, troubleshooting, or resolution content, use it to answer the staff member and to make recommendedResolutionSteps more specific. Cite the source title when using it. If it is not relevant, ignore it.',
       'When ticket is not null, include ticket.metadata.recommendedResolutionSteps with 4-6 issue-specific steps the owner can follow to resolve the ticket.',
     ].join('\n'),
     userContent: JSON.stringify({
       context: body.context || {},
-      intakeContract: body.intakeContract || {},
       masterData: SERVER_MASTER_DATA,
+      knowledgeContext,
       messages: body.messages || [],
     }),
   });
@@ -1252,7 +1320,7 @@ function inferContextFromText(text: string, context: Record<string, unknown> = {
         : /audio|speaker|mic|sound/.test(lower) ? 'Audio System Malfunction'
         : /leak|plumbing|drain|flush|sewage|overflow|clog|pipe/.test(lower) ? 'Plumbing Leaks'
         : /pest|cockroach|rat|rodent|insect|ant/.test(lower) ? 'Pest Control Needed'
-        : /door|lock|handle|hinge/.test(lower) ? 'Door Lock Issues'
+        : /\bdoor\b|\block\b|latch|hinge/.test(lower) ? 'Door Lock Issues'
         : /machine|washing|dryer|equipment|broken|not working|malfunction|faulty/.test(lower) ? 'Broken Equipment'
         : 'General Maintenance Delays';
     } else if (/odour|odor|smell|stench|ventilation|air quality|locker|shower|washroom|toilet|steam room|valet|parking|wi-fi|wifi|boutique|retail|amenity|amenities|cleanliness|hygiene|clean|dirty/.test(lower)) {
@@ -1374,7 +1442,24 @@ function requiredFieldsForIssue(
   const includeClientImpact = options.includeClientImpact ?? true;
 
   if (includeClientImpact) {
-    add('clientsAffected', context.clientsAffected);
+    // For purely physical/facility issues reported outside class hours, auto-set clientsAffected
+    // to "No clients affected" so staff aren't interrupted by this question when members aren't present.
+    // Staff can still override if wrong. Hours check: outside 6am–10pm is almost certainly after hours.
+    const isPhysicalOnly = physicalOnlyCategories.has(category);
+    const incidentTimeRaw = cleanString(context.incidentDateTime);
+    const isAfterHours = (() => {
+      if (!incidentTimeRaw) return false;
+      try {
+        const dt = new Date(incidentTimeRaw);
+        if (isNaN(dt.getTime())) return false;
+        const hour = dt.getHours();
+        return hour < 6 || hour >= 22;
+      } catch { return false; }
+    })();
+    const effectiveClientsAffected = (isPhysicalOnly && isAfterHours && !cleanString(context.clientsAffected))
+      ? 'No clients affected'
+      : cleanString(context.clientsAffected);
+    add('clientsAffected', effectiveClientsAffected);
   }
 
   // Always require studio for any physical in-studio category — no keyword guard needed
@@ -1401,7 +1486,7 @@ function requiredFieldsForIssue(
       add('operationalImpact', context.operationalImpact);
       add('currentWorkaround', context.currentWorkaround);
       add('resolutionRequirement', context.resolutionRequirement);
-    } else if (/door|lock|latch|handle|hinge|access|closing|opening/.test(lower) || subCategory === 'Door Lock Issues') {
+    } else if (/\bdoor\b|\block\b|latch|handle|hinge|\baccess\b|closing|opening/.test(lower) || subCategory === 'Door Lock Issues') {
       add('lockFaultType', context.lockFaultType);
       add('accessStatus', context.accessStatus);
       add('securityRisk', context.securityRisk);
@@ -1458,7 +1543,10 @@ function requiredFieldsForIssue(
     }
   }
   if ((classContextCategories.has(category) || hostedSpecific) && /class|session|hosted|barre|cycle|strength|trainer|instructor|late cancellation|injury during class/.test(lower)) add('classType', context.sessionId || context.classType);
-  if (category === 'Trainer Feedback' && /which trainer|specific trainer|trainer name/.test(lower)) add('trainer', context.trainer);
+  // For trainer-specific categories, always require trainer when not yet captured —
+  // don't gate on specific question wording that the AI may phrase differently.
+  const trainerCategories = new Set(['Trainer Feedback', 'Instructor & Class Quality', 'Class Experience']);
+  if (trainerCategories.has(category)) add('trainer', context.trainer);
   if (hostedSpecific) {
     if (/which partner|partner name|influencer name|host name/.test(lower)) add('partnerName', context.partnerName);
     if (/feedback area|prospect quality|follow-up preference/.test(lower)) {
@@ -1747,7 +1835,7 @@ Deno.serve(async (request) => {
             requestedDebug: debugTraceRequested,
             path: 'greeting',
             rawIssueText,
-            effectiveContext: effectiveBodyContext,
+            effectiveContext: body.context || {},
             aiResponse: null,
             guardedMissingFields: [],
             finalForm: null,
@@ -1810,32 +1898,31 @@ Deno.serve(async (request) => {
       }
     }
 
-    // For non-physical issues (or physical with no description yet), auto-populate from the
-    // user's message if the context doesn't have one. This prevents the description field from
-    // appearing as required when the user already stated their issue in text.
-    if (!cleanString(effectiveBodyContext.description) && rawIssueText.length > 8 && !isFormSubmission) {
-      // For physical issues: only auto-populate if the message is already detailed (>100 chars
-      // with sentence structure), otherwise leave blank so the AI collects proper detail.
-      const isDetailedReport = rawIssueText.length > 100 || (/[.!?]\s/.test(rawIssueText) && rawIssueText.length > 60);
-      if (!isPhysicalIssue || isDetailedReport) {
-        effectiveBodyContext.description = rawIssueText;
-      }
+    // Auto-populate description only for non-physical issues AND only when the conversation
+    // already has established context (meaning this is a follow-up turn, not the initial report).
+    // On the first turn the raw message IS the initial report — not a structured description.
+    // Setting description = rawIssueText on turn 1 causes the AI to skip asking for detail
+    // because it thinks the description field is already satisfied.
+    // Physical issues never get auto-populated — the AI must collect structured operational detail.
+    const hasEstablishedContext = Boolean(
+      cleanString(effectiveBodyContext.category) ||
+      cleanString(effectiveBodyContext.intakeRoute) ||
+      cleanString(effectiveBodyContext.studio)
+    );
+    if (!isPhysicalIssue && !cleanString(effectiveBodyContext.description) && rawIssueText.length > 8 && !isFormSubmission && hasEstablishedContext) {
+      effectiveBodyContext.description = rawIssueText;
     }
 
     const bodyWithEffectiveContext = { ...body, context: effectiveBodyContext };
-    const aiResponse = await askAiForIntake(bodyWithEffectiveContext, instructions);
+    const knowledgeContext = await fetchKnowledgeContext(bodyWithEffectiveContext, effectiveBodyContext);
+    const aiResponse = await askAiForIntake(bodyWithEffectiveContext, instructions, knowledgeContext);
 
     if (aiResponse) {
       const aiContext = { ...effectiveBodyContext, ...(aiResponse.inferredContext || {}) };
-      const guardedMissingFields = requiredFieldsForIssue(latestUserMessage, aiContext);
+      const guardedMissingFields: DetailFieldId[] = [];
+      const finalForm = aiResponse.detailForm || null;
 
-      // AI drives the form: keep the AI's contextual questions (canonical + invented), only
-      // dropping reportedBy and member/class pickers the guard did not flag. Then merge in any
-      // guard-required fields the AI omitted so the hard intake gates are always satisfied.
-      const aiDrivenForm = filterAiDetailFormFields(aiResponse.detailForm, guardedMissingFields);
-      const finalForm = mergeGuardFloorIntoForm(aiDrivenForm, guardedMissingFields);
-
-      const needsMoreInfo = aiResponse.needsMoreInfo || finalForm !== null || guardedMissingFields.length > 0;
+      const needsMoreInfo = aiResponse.needsMoreInfo || finalForm !== null;
       const aiTicket = needsMoreInfo ? null : withRecommendedResolutionMetadata(aiResponse.ticket || fallbackDraft(messages, aiContext));
       const trace = debugTraceRequested
         ? buildDecisionTrace({
@@ -1870,7 +1957,7 @@ Deno.serve(async (request) => {
         ticket: aiTicket,
         suggestedChips: aiResponse.suggestedChips || [],
         inferredContext: aiResponse.inferredContext || {},
-        missingFields: guardedMissingFields.length > 0 ? guardedMissingFields : aiResponse.missingFields || [],
+        missingFields: aiResponse.missingFields || [],
         publishable: !needsMoreInfo && aiResponse.publishable === true,
         urgencyReason: aiResponse.urgencyReason || '',
         debugTrace: trace,
@@ -1879,101 +1966,8 @@ Deno.serve(async (request) => {
 
     const inferredContext = inferContextFromText(latestUserMessage, effectiveBodyContext);
     const effectiveContext = { ...effectiveBodyContext, ...inferredContext };
-    const missingFields = requiredFieldsForIssue(latestUserMessage, effectiveContext);
-    if (missingFields.length > 0) {
-      const trace = debugTraceRequested
-        ? buildDecisionTrace({
-            traceId,
-            conversationId: body.conversationId || traceId,
-            promptProfile: `${promptProfile}:fallback`,
-            requestedDebug: debugTraceRequested,
-            path: 'fallback-regex',
-            rawIssueText,
-            effectiveContext,
-            aiResponse: null,
-            guardedMissingFields: missingFields,
-            finalForm: null,
-            remainingMissingFields: missingFields,
-            finalNeedsMoreInfo: true,
-            finalPublishable: false,
-            finalTicketPresent: false,
-          })
-        : null;
-      if (trace) logDecisionTrace(trace);
-      console.warn(`[athena-intake] path=fallback (regex) missingFields=${missingFields.length}`);
-      return json({
-        conversationId: body.conversationId || crypto.randomUUID(),
-        promptProfile: `${promptProfile}:fallback`,
-        needsMoreInfo: true,
-        reply: 'I need a few details before drafting this ticket. Please complete the form below.',
-        detailForm: {
-          title: 'Complete ticket intake details',
-          description: 'The options use the Physique 57 master data lists so the ticket routes correctly.',
-          fields: Array.from(new Set(missingFields)),
-          submitLabel: 'Continue drafting ticket',
-        },
-        suggestedChips: [],
-        inferredContext,
-        missingFields,
-        publishable: false,
-        urgencyReason: inferredContext.priority
-          ? `Fallback priority inferred as ${inferredContext.priority} from the report.`
-          : '',
-        debugTrace: trace,
-      });
-    }
 
     const draft = withRecommendedResolutionMetadata(fallbackDraft(messages, effectiveContext));
-    const draftMissingFields = requiredFieldsForIssue(latestUserMessage, {
-      ...effectiveContext,
-      ...draft,
-      category: draft.category,
-      subCategory: draft.subCategory,
-      studio: draft.studio,
-      description: draft.description || (effectiveContext as Record<string, unknown>).description,
-    });
-    if (draftMissingFields.length > 0) {
-      const trace = debugTraceRequested
-        ? buildDecisionTrace({
-            traceId,
-            conversationId: body.conversationId || traceId,
-            promptProfile: `${promptProfile}:incomplete`,
-            requestedDebug: debugTraceRequested,
-            path: 'incomplete-regex',
-            rawIssueText,
-            effectiveContext: { ...effectiveContext, ...draft },
-            aiResponse: null,
-            guardedMissingFields: draftMissingFields,
-            finalForm: null,
-            remainingMissingFields: draftMissingFields,
-            finalNeedsMoreInfo: true,
-            finalPublishable: false,
-            finalTicketPresent: false,
-          })
-        : null;
-      if (trace) logDecisionTrace(trace);
-      console.warn(`[athena-intake] path=incomplete (regex) missingFields=${draftMissingFields.length}`);
-      return json({
-        conversationId: body.conversationId || crypto.randomUUID(),
-        promptProfile: `${promptProfile}:incomplete`,
-        needsMoreInfo: true,
-        reply: 'Almost there — I need a couple more details before drafting this ticket.',
-        detailForm: {
-          title: 'Complete ticket intake details',
-          description: 'Athena inferred the classification and needs these remaining details.',
-          fields: Array.from(new Set(draftMissingFields)),
-          submitLabel: 'Continue drafting ticket',
-        },
-        suggestedChips: [],
-        inferredContext,
-        missingFields: draftMissingFields,
-        publishable: false,
-        urgencyReason: inferredContext.priority
-          ? `Fallback priority inferred as ${inferredContext.priority} from the report.`
-          : '',
-        debugTrace: trace,
-      });
-    }
     const trace = debugTraceRequested
       ? buildDecisionTrace({
           traceId,
