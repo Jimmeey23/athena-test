@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Sparkles, CheckCircle2, Paperclip, X, Mic, Square, ChevronDown, Check, HelpCircle, ClipboardCheck, Gauge, GraduationCap, LayoutTemplate, Download, FileText, FileCode2, ImageDown } from 'lucide-react';
+import { Send, Sparkles, CheckCircle2, Paperclip, X, Mic, Square, ChevronDown, Check, HelpCircle, ClipboardCheck, Gauge, GraduationCap, LayoutTemplate, Download, FileText, FileCode2, ImageDown, Copy } from 'lucide-react';
 import { LiveTicketBuilder } from './LiveTicketBuilder';
 import InteractiveRobotSpline from '@/components/InteractiveRobotSpline';
 import { ROBOT_SPLINE_URL } from '@/lib/galleryImages';
@@ -1199,6 +1199,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
   const [textToTicketText, setTextToTicketText] = useState('');
   const [activeTemplate, setActiveTemplate] = useState<ContextTemplate | null>(null);
   const [exportingFormat, setExportingFormat] = useState<'png' | null>(null);
+  const [copyTranscriptState, setCopyTranscriptState] = useState<'idle' | 'copied'>('idle');
   const [loadDecorativeRobot, setLoadDecorativeRobot] = useState(false);
   const publishingRef = useRef<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1213,6 +1214,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
   const activeChatEpochRef = useRef(0);
   const shownRelatedTicketNoticeKeysRef = useRef<Set<string>>(new Set());
   const lastResetVersionRef = useRef(resetVersion);
+  const lastSentContextRef = useRef<DetailContext>({});
   const recentTickets = useMemo(
     () => tickets
       .filter((ticket) => !isTrainerEvaluationProfileOnly(ticket))
@@ -1278,6 +1280,18 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
       );
     } catch (error) {
       addExportError('HTML', error);
+    }
+  }, [addExportError, conversationId, messages, reporterName]);
+
+  const copyTranscript = useCallback(async () => {
+    try {
+      const exportedAt = new Date();
+      const text = plainTextForChatTranscript(messages, { conversationId, reporterName, exportedAt });
+      await navigator.clipboard.writeText(text);
+      setCopyTranscriptState('copied');
+      window.setTimeout(() => setCopyTranscriptState('idle'), 2000);
+    } catch (error) {
+      addExportError('clipboard', error);
     }
   }, [addExportError, conversationId, messages, reporterName]);
 
@@ -1519,11 +1533,21 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
     if (!ctx.classType) hints.push(`Valid class types: ${CLASS_TYPES.join(', ')}`);
     if (!ctx.trainer) hints.push(`Valid trainers: ${TRAINERS.join(', ')}`);
 
-    if (ctx.conversationPlan) parts.push(`Conversation plan: ${ctx.conversationPlan}`);
 
     const contextBlock = parts.length ? `[Context — ${parts.join(' | ')}]` : '';
     const hintsBlock = hints.length ? `[Constants — ${hints.join(' | ')}]` : '';
     return [contextBlock, hintsBlock].filter(Boolean).join('\n') + (contextBlock || hintsBlock ? '\n' : '');
+  };
+
+  const buildDeltaContextPreamble = (current: DetailContext, previous: DetailContext): string => {
+    const changed: DetailContext = {};
+    for (const key of Object.keys(current) as (keyof DetailContext)[]) {
+      if (current[key] && current[key] !== previous[key]) {
+        (changed as Record<string, unknown>)[key] = current[key];
+      }
+    }
+    if (Object.keys(changed).length === 0) return '';
+    return buildContextPreamble(changed);
   };
 
   const sendMessage = async (text: string, contextOverride?: DetailContext) => {
@@ -1579,7 +1603,11 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
     activeContext.reportedBy = reporterName;
     activeContext.reportedBy = reporterName;
     setContext(activeContext);
-    const preamble = buildContextPreamble(activeContext);
+    const isFirstTurn = messages.filter((m) => m.role === 'user').length === 0;
+    const preamble = isFirstTurn
+      ? buildContextPreamble(activeContext)
+      : buildDeltaContextPreamble(activeContext, lastSentContextRef.current);
+    lastSentContextRef.current = { ...activeContext };
     const userMsg: Message = {
       id: `u-${Date.now()}`,
       role: 'user',
@@ -2190,13 +2218,26 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
               <p className="truncate text-xs text-slate-500">Your AI ops assistant · Physique 57 India</p>
             </div>
           </div>
-          <ChatExportMenu
-            disabled={messages.length === 0 || Boolean(exportingFormat)}
-            exportingPng={exportingFormat === 'png'}
-            onExportText={exportTranscriptText}
-            onExportHtml={exportTranscriptHtml}
-            onExportPng={exportTranscriptPng}
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            <TemplatePicker onSelect={applyTemplate} />
+            <button
+              type="button"
+              onClick={() => setTextToTicketOpen(true)}
+              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100"
+            >
+              <ClipboardCheck className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Text to ticket</span>
+            </button>
+            <ChatExportMenu
+              disabled={messages.length === 0 || Boolean(exportingFormat)}
+              exportingPng={exportingFormat === 'png'}
+              copyState={copyTranscriptState}
+              onExportText={exportTranscriptText}
+              onExportHtml={exportTranscriptHtml}
+              onExportPng={exportTranscriptPng}
+              onCopyTranscript={copyTranscript}
+            />
+          </div>
         </div>
 
         {instructorEvaluationMode ? (
@@ -2408,19 +2449,6 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
                 onChange={(next) => setContext((current) => ({ ...current, ...next }))}
               />
             </div>
-            <TemplatePicker onSelect={applyTemplate} />
-            <button
-              type="button"
-              onClick={() => setTextToTicketOpen(true)}
-              className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-semibold shadow-sm transition ${
-                instructorEvaluationMode
-                  ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                  : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-              }`}
-            >
-              <ClipboardCheck className="h-3.5 w-3.5" />
-              Text to ticket
-            </button>
           </div>
         </div>
 
@@ -2588,10 +2616,12 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
 const ChatExportMenu: React.FC<{
   disabled?: boolean;
   exportingPng?: boolean;
+  copyState?: 'idle' | 'copied';
   onExportText: () => void;
   onExportHtml: () => void;
   onExportPng: () => void | Promise<void>;
-}> = ({ disabled = false, exportingPng = false, onExportText, onExportHtml, onExportPng }) => {
+  onCopyTranscript: () => Promise<void>;
+}> = ({ disabled = false, exportingPng = false, copyState = 'idle', onExportText, onExportHtml, onExportPng, onCopyTranscript }) => {
   const [open, setOpen] = useState(false);
   const runAction = (action: () => void | Promise<void>) => {
     setOpen(false);
@@ -2618,6 +2648,15 @@ const ChatExportMenu: React.FC<{
         collisionPadding={12}
         className="w-56 overflow-hidden rounded-2xl border-slate-200 bg-white/96 p-1.5 shadow-[0_24px_70px_rgba(15,23,42,0.14)] backdrop-blur-xl"
       >
+        <button
+          type="button"
+          onClick={() => runAction(onCopyTranscript)}
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-blue-700"
+        >
+          {copyState === 'copied' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+          {copyState === 'copied' ? 'Copied!' : 'Copy transcript'}
+        </button>
+        <div className="my-1 h-px bg-slate-100" />
         <button
           type="button"
           onClick={() => runAction(onExportText)}
@@ -2663,7 +2702,7 @@ const TemplatePicker: React.FC<{ onSelect: (template: ContextTemplate) => void }
         </button>
       </PopoverTrigger>
       <PopoverContent
-        side="top"
+        side="bottom"
         align="start"
         sideOffset={8}
         collisionPadding={12}

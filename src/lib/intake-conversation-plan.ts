@@ -105,22 +105,20 @@ export function buildIntakeConversationPlan({
       fieldIds: ['memberName'],
       reason: 'Confirmed client impact needs Momence member context before drafting.',
     });
-  } else {
+  } else if (hasClientImpactSignal(combined)) {
     followUpFieldIds.add('clientsAffected');
     steps.push({
       id: 'confirm-client-impact',
       title: 'Confirm whether any members were directly or indirectly affected',
       fieldIds: ['clientsAffected'],
-      reason: 'Every ticket needs the client-impact check before drafting.',
+      reason: 'Report contains client/member signal — check client impact before drafting.',
     });
-    if (hasClientImpactSignal(combined)) {
-      steps.push({
-        id: 'conditional-affected-members',
-        title: 'If client impact is confirmed, identify affected member(s)',
-        fieldIds: ['memberName'],
-        reason: 'Client impact may change the required Momence follow-up path.',
-      });
-    }
+    steps.push({
+      id: 'conditional-affected-members',
+      title: 'If client impact is confirmed, identify affected member(s)',
+      fieldIds: ['memberName'],
+      reason: 'Client impact may change the required Momence follow-up path.',
+    });
   }
 
   if (hasClassAffectedSignal(combined)) {
@@ -140,13 +138,6 @@ export function buildIntakeConversationPlan({
       reason: 'The owner needs to know whether the session was delayed, paused, moved, cancelled, or otherwise disrupted.',
     });
   }
-
-  steps.push({
-    id: 'resolution-required',
-    title: 'Confirm whether this ticket requires a resolution',
-    fieldIds: ['resolutionRequired'],
-    reason: 'This final gate separates actionable tickets from record-only documentation.',
-  });
 
   steps.push({
     id: 'draft-review',

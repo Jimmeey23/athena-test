@@ -172,13 +172,21 @@ export async function callJsonAi(
     systemContent: string;
     userContent: string;
     temperature?: number;
+    model?: string;
+    maxTokens?: number;
   },
 ): Promise<{ content: string; provider: AiProvider; model: string } | null> {
   const config = resolveAiProviderConfig(env, input.provider);
   if (!config) return null;
 
+  const effectiveConfig: AiProviderConfig = {
+    ...config,
+    ...(input.model ? { model: input.model } : {}),
+    ...(input.maxTokens ? { maxTokens: input.maxTokens } : {}),
+  };
+
   const request = buildJsonAiRequest(
-    config,
+    effectiveConfig,
     input.systemContent,
     input.userContent,
     input.temperature ?? 0.2,
@@ -196,8 +204,8 @@ export async function callJsonAi(
 
   const data = await response.json();
   return {
-    content: extractJsonAiText(config.provider, data),
-    provider: config.provider,
-    model: config.model,
+    content: extractJsonAiText(effectiveConfig.provider, data),
+    provider: effectiveConfig.provider,
+    model: effectiveConfig.model,
   };
 }
