@@ -385,9 +385,15 @@ function hasNamedPersonRequestReference(text: string): boolean {
 }
 
 function hasPersonalCommercialReference(text: string): boolean {
-  return /\b(member|client|customer|guest|prospect)\b/i.test(text) ||
-    /\b(she|he|her|his|their)\b/i.test(text) ||
-    hasNamedPersonRequestReference(text);
+  if (hasNamedPersonRequestReference(text)) return true;
+
+  const lower = text.toLowerCase();
+  const personalActionPattern = /\b(refund|billing|payment|membership|package|freeze|roll\s?over|extension|renewal|cancel|complain|complaint|follow-up|follow up|request|issue|delay|problem|concern|asked|wants|needs)\b/;
+
+  if (/\b(she|he|her|his|their)\b/i.test(lower) && personalActionPattern.test(lower)) return true;
+  if (/\b(member|client|customer|guest|prospect)\b/i.test(lower) && personalActionPattern.test(lower)) return true;
+
+  return false;
 }
 
 function shouldRequireNamedMemberContext(context: IntakeContext, issueText: string): boolean {
@@ -404,21 +410,11 @@ function shouldRequireNamedMemberContext(context: IntakeContext, issueText: stri
     context.description,
     context.requestType,
   ].filter(Boolean).join(' ').toLowerCase();
-  const lower = [
-    entityText,
-    issueText,
-    context.intakeRoute,
-    context.category,
-    context.subCategory,
-  ].filter(Boolean).join(' ').toLowerCase();
 
-  const mentionsMember = hasPersonalCommercialReference(entityText);
-  const needsPersonalFollowUp =
-    /refund|billing|payment|membership|package|freeze|roll\s?over|extension|renewal|cancel|complain|complaint|follow-up|follow up|contact|whatsapp|email|phone|profile|account/.test(lower);
-
-  // Any mention of a member/client OR any member-adjacent action requires lookup —
-  // staff must never submit a ticket about a specific person without identifying them first.
-  return mentionsMember || needsPersonalFollowUp;
+  // Only require lookup when the report actually references a person or clearly
+  // asks about a specific member/client record. Generic complaints should not be
+  // blocked on member identification.
+  return hasPersonalCommercialReference(entityText);
 }
 
 function shouldRequireComplaintResolution(context: IntakeContext, issueText: string): boolean {

@@ -17,7 +17,7 @@ vi.mock('./useTickets', () => ({
   }),
 }));
 
-vi.mock('@/contexts/BackendAuthContext', () => ({
+vi.mock('@/contexts/useBackendAuth', () => ({
   useBackendAuth: () => ({
     user: {
       email: 'jimmeey@example.com',

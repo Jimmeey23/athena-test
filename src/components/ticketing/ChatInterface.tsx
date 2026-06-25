@@ -2219,15 +2219,6 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <TemplatePicker onSelect={applyTemplate} />
-            <button
-              type="button"
-              onClick={() => setTextToTicketOpen(true)}
-              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100"
-            >
-              <ClipboardCheck className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Text to ticket</span>
-            </button>
             <ChatExportMenu
               disabled={messages.length === 0 || Boolean(exportingFormat)}
               exportingPng={exportingFormat === 'png'}
@@ -2448,6 +2439,17 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
                 accent="blue"
                 onChange={(next) => setContext((current) => ({ ...current, ...next }))}
               />
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <TemplatePicker onSelect={applyTemplate} />
+              <button
+                type="button"
+                onClick={() => setTextToTicketOpen(true)}
+                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100"
+              >
+                <ClipboardCheck className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Text to ticket</span>
+              </button>
             </div>
           </div>
         </div>

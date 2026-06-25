@@ -3,7 +3,7 @@ import { backendSupabase } from './backend-supabase';
 const MOMENCE_BASE_URL = 'https://api.momence.com/api/v2';
 const DEFAULT_PAGE_SIZE = 20;
 const SESSION_RESULT_LIMIT = 120;
-const SESSION_LOOKAHEAD_DAYS = 0;
+const SESSION_LOOKAHEAD_DAYS = 45;
 const SESSION_LOOKBACK_DAYS = 180;
 const SESSION_SEARCH_TYPE = 'private';
 const SESSION_PAGE_SIZE = 40;
