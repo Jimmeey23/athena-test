@@ -1,8 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Send, Sparkles, CheckCircle2, Paperclip, X, Mic, Square, ChevronDown, Check, HelpCircle, ClipboardCheck, Gauge, GraduationCap, LayoutTemplate, Download, FileText, FileCode2, ImageDown, Copy } from 'lucide-react';
-import { LiveTicketBuilder } from './LiveTicketBuilder';
-import InteractiveRobotSpline from '@/components/InteractiveRobotSpline';
-import { ROBOT_SPLINE_URL } from '@/lib/galleryImages';
 import { getErrorMessage } from '@/lib/error-formatting';
 import { TicketPreviewCard } from './TicketPreviewCard';
 import { ContextPicker, Context } from './ContextPicker';
@@ -1282,7 +1279,6 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
   const [activeTemplate, setActiveTemplate] = useState<ContextTemplate | null>(null);
   const [exportingFormat, setExportingFormat] = useState<'png' | null>(null);
   const [copyTranscriptState, setCopyTranscriptState] = useState<'idle' | 'copied'>('idle');
-  const [loadDecorativeRobot, setLoadDecorativeRobot] = useState(false);
   const publishingRef = useRef<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1420,12 +1416,6 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, loading]);
 
-  useEffect(() => {
-    const idle = window.requestIdleCallback?.(() => setLoadDecorativeRobot(true), { timeout: 2_500 });
-    if (idle != null) return () => window.cancelIdleCallback?.(idle);
-    const handle = window.setTimeout(() => setLoadDecorativeRobot(true), 1_500);
-    return () => window.clearTimeout(handle);
-  }, []);
 
   // Prefetch both session caches on mount: hosted (private) and all-sessions ([]).
   // Dropdowns read from momenceSessionSearchCache and skip their own fetch when warm.
@@ -2200,24 +2190,10 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-slate-200/60 font-['Plus_Jakarta_Sans',Inter,sans-serif]">
-      <div className="relative hidden h-full w-[32%] shrink-0 overflow-hidden border-r border-slate-200 bg-gradient-to-br from-slate-100 via-white to-blue-50 lg:block 2xl:w-[26%]">
-        <div className="absolute -left-12 top-16 h-56 w-56 rounded-full bg-blue-400/20 blur-3xl" />
-        <div className="absolute -right-12 bottom-10 h-64 w-64 rounded-full bg-cyan-400/20 blur-3xl" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(100,116,139,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(100,116,139,0.08)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_78%_56%_at_50%_50%,#000_68%,transparent_110%)]" />
-        {loadDecorativeRobot ? (
-          <InteractiveRobotSpline
-            key={instructorEvaluationMode ? 'athena-trainer-blue' : 'athena-ticket-blue'}
-            scene={ROBOT_SPLINE_URL}
-            className="athena-bot-tint-blue absolute inset-0 h-full w-full transition duration-500"
-            smile
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center opacity-70">
-            <img src="/download-1.png" alt="Athena" className="-scale-x-100 h-56 w-56 rounded-[2rem] object-contain blur-[0.2px]" />
-          </div>
-        )}
-        <div className="absolute left-3 right-3 top-3 z-10">
-          <div className="flex items-center justify-between rounded-2xl border border-white/50 bg-white/40 px-3 py-2 shadow-[0_18px_54px_rgba(15,23,42,0.12)] backdrop-blur-2xl">
+      <div className="hidden h-full w-[32%] shrink-0 flex-col border-r border-slate-200 bg-slate-50 lg:flex 2xl:w-[26%]">
+        {/* Athena mode toggle */}
+        <div className="shrink-0 border-b border-slate-100 p-3">
+          <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
             <div className="min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Athena mode</div>
               <div className="truncate text-xs font-semibold text-blue-950">
@@ -2244,38 +2220,72 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
             </button>
           </div>
         </div>
-        <div className="absolute bottom-2 left-2 right-2">
-          <div className="rounded-2xl border border-white/50 bg-white/30 p-2 shadow-[0_24px_80px_-30px_rgba(15,23,42,0.35)] backdrop-blur-2xl">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-black">
-              Recent tickets
+
+        {/* Live ticket preview */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {activeDraftReviewMessage?.ticket ? (
+            <div className="p-3">
+              <div className="mb-2 flex items-center gap-1.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.7)]" />
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Live draft</span>
+              </div>
+              <DraftTicketReviewPreview
+                draft={mergeDraftWithContext(activeDraftReviewMessage.ticket, context)}
+                context={context}
+                tickets={tickets}
+                onConfirm={() => onConfirmDraftFromMessage(activeDraftReviewMessage)}
+                onEdit={() => refineDraft()}
+                onDiscard={() => discardDraft(activeDraftReviewMessage.id)}
+                onSaveEdit={(draft) => saveEditedDraft(activeDraftReviewMessage.id, draft)}
+                confirmed={activeDraftReviewMessage.published}
+                ticketId={activeDraftReviewMessage.ticketId}
+                confirmedTicket={activeDraftReviewMessage.publishedTicket}
+                publishing={publishingRef.current.has(activeDraftReviewMessage.id)}
+              />
             </div>
-            <div className="flex flex-wrap gap-2">
-              {recentTickets.length > 0 ? recentTickets.map((ticket, index) => {
-                const compactLabel = ticket.title.length > 36
-                  ? `${ticket.title.slice(0, 33).replace(/\s+\S*$/, '').trimEnd()}...`
-                  : ticket.title;
-                return (
-                  <button
-                    key={ticket.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedTicket(ticket);
-                      onOpenExistingTicket?.(ticket);
-                    }}
-                    className="animate-ticket-chip-in max-w-[220px] rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-slate-900"
-                    style={{ animationDelay: `${index * 90}ms` }}
-                    title={`${ticket.id} - ${ticket.title}`}
-                  >
-                    <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{compactLabel}</span>
-                  </button>
-                );
-              }) : (
-                <span className="rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 text-[11px] font-medium text-slate-500 shadow-sm">
-                  No recent tickets
-                </span>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <img
+                  src="/download-1.png"
+                  alt="Athena"
+                  className="-scale-x-100 h-10 w-10 object-contain opacity-60"
+                  style={{ filter: 'hue-rotate(225deg) saturate(1.4) contrast(1.08)' }}
+                />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-700">No draft yet</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-400">Describe an issue in the chat and Athena will draft a ticket here.</p>
+              </div>
+              {recentTickets.length > 0 && (
+                <div className="mt-4 w-full text-left">
+                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Recent tickets</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {recentTickets.map((ticket, index) => {
+                      const compactLabel = ticket.title.length > 36
+                        ? `${ticket.title.slice(0, 33).replace(/\s+\S*$/, '').trimEnd()}...`
+                        : ticket.title;
+                      return (
+                        <button
+                          key={ticket.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedTicket(ticket);
+                            onOpenExistingTicket?.(ticket);
+                          }}
+                          className="animate-ticket-chip-in max-w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-slate-900"
+                          style={{ animationDelay: `${index * 90}ms` }}
+                          title={`${ticket.id} - ${ticket.title}`}
+                        >
+                          <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{compactLabel}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -2376,37 +2386,6 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
             {loading && <TypingIndicator />}
           </div>
         )}
-
-        <Dialog
-          open={Boolean(activeDraftReviewMessage)}
-          onOpenChange={(open) => {
-            if (!open) setActiveDraftReviewMessageId(null);
-          }}
-        >
-          <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto border-slate-200 bg-slate-50/95 p-4 shadow-[0_30px_100px_rgba(15,23,42,0.28)] data-[state=open]:zoom-in-90 sm:rounded-3xl sm:p-5">
-            <DialogHeader className="pr-8">
-              <DialogTitle className="text-base text-slate-950">Review Athena ticket draft</DialogTitle>
-              <DialogDescription>
-                Check the context, routing, and Momence signals before publishing.
-              </DialogDescription>
-            </DialogHeader>
-            {activeDraftReviewMessage?.ticket && (
-              <DraftTicketReviewPreview
-                draft={mergeDraftWithContext(activeDraftReviewMessage.ticket, context)}
-                context={context}
-                tickets={tickets}
-                onConfirm={() => onConfirmDraftFromMessage(activeDraftReviewMessage)}
-                onEdit={() => refineDraft()}
-                onDiscard={() => discardDraft(activeDraftReviewMessage.id)}
-                onSaveEdit={(draft) => saveEditedDraft(activeDraftReviewMessage.id, draft)}
-                confirmed={activeDraftReviewMessage.published}
-                ticketId={activeDraftReviewMessage.ticketId}
-                confirmedTicket={activeDraftReviewMessage.publishedTicket}
-                publishing={publishingRef.current.has(activeDraftReviewMessage.id)}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
 
         <Dialog open={textToTicketOpen} onOpenChange={setTextToTicketOpen}>
           <DialogContent className="max-w-2xl border-slate-200 bg-white p-5 shadow-[0_30px_100px_rgba(15,23,42,0.25)] sm:rounded-3xl">
@@ -2694,12 +2673,6 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         )}
       </div>
 
-      <div className="hidden xl:flex h-full w-[240px] 2xl:w-[260px] shrink-0 flex-col border-l border-slate-100 bg-slate-50/40 overflow-hidden">
-        <LiveTicketBuilder
-          context={context}
-          activeDraft={activeDraftReviewMessage?.ticket ?? null}
-        />
-      </div>
     </div>
   );
 };
