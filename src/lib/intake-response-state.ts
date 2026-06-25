@@ -24,6 +24,7 @@ export function shouldAcceptAiDetailForm(state: AiDetailFormState): boolean {
 
 export function shouldReplaceInferredCategory(currentCategory?: string, inferredCategory?: string): boolean {
   if (!inferredCategory || inferredCategory === currentCategory) return false;
+  if (currentCategory === 'Safety and Security' && inferredCategory === 'Theft and Lost Items') return true;
   return GENERIC_CATEGORIES.has(currentCategory || '');
 }
 

@@ -56,7 +56,7 @@ describe('ChatInterface intake flow', () => {
     const user = userEvent.setup();
     render(<ChatInterface />);
 
-    const input = screen.getByPlaceholderText("Tell me what happened — I'll take care of the rest…") as HTMLTextAreaElement;
+    const input = screen.getByPlaceholderText("Tell me what happened. I'll take care of the rest.") as HTMLTextAreaElement;
     await user.type(input, 'CLIENT SMITA MODI WANTS A REFUND');
     await user.click(screen.getByLabelText('Optimise prompt for Athena'));
 
@@ -111,7 +111,7 @@ describe('ChatInterface intake flow', () => {
     const user = userEvent.setup();
     const { container } = render(<ChatInterface />);
 
-    const input = screen.getByPlaceholderText("Tell me what happened — I'll take care of the rest…");
+    const input = screen.getByPlaceholderText("Tell me what happened. I'll take care of the rest.");
     await user.type(input, 'CLIENT SMITA MODI WANTS A REFUND');
     const sendButton = container.querySelector('svg.lucide-send')?.closest('button');
     expect(sendButton).toBeTruthy();
@@ -166,7 +166,7 @@ describe('ChatInterface intake flow', () => {
     const user = userEvent.setup();
     const { container } = render(<ChatInterface />);
 
-    const input = screen.getByPlaceholderText("Tell me what happened — I'll take care of the rest…");
+    const input = screen.getByPlaceholderText("Tell me what happened. I'll take care of the rest.");
     await user.type(input, 'SMITA PATIL IS ASKING FOR A REFUND OF HER MEMBERSHIP FEES.');
     const sendButton = container.querySelector('svg.lucide-send')?.closest('button');
     expect(sendButton).toBeTruthy();
@@ -177,5 +177,56 @@ describe('ChatInterface intake flow', () => {
     });
     expect(screen.queryByText(/I drafted the ticket below/i)).toBeNull();
     expect(screen.queryByText(/Ticket draft ready for review/i)).toBeNull();
+  });
+
+  it('asks for affected equipment before drafting a cracked cycle monitor ticket', async () => {
+    hoisted.invokeTicketingFunction.mockResolvedValue({
+      data: {
+        conversationId: 'conversation-cycle-monitor',
+        needsMoreInfo: false,
+        reply: 'Got it — I drafted the maintenance ticket.',
+        detailForm: null,
+        inferredContext: {
+          intakeRoute: 'Complaint',
+          category: 'Repair and Maintenance',
+          subCategory: 'TFA Malfunction',
+          studio: 'Supreme HQ, Bandra',
+          priority: 'High',
+        },
+        ticket: {
+          title: 'Cycle monitor cracked',
+          description: 'Cycle monitor screen cracked at Bandra studio.',
+          category: 'Repair and Maintenance',
+          subCategory: 'TFA Malfunction',
+          priority: 'High',
+          studio: 'Supreme HQ, Bandra',
+          reportedBy: 'Jimmeey',
+          tags: ['ai-draft'],
+        },
+        suggestedChips: [],
+        missingFields: [],
+        publishable: true,
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    const { container } = render(<ChatInterface />);
+
+    const input = screen.getByPlaceholderText("Tell me what happened. I'll take care of the rest.");
+    await user.type(input, 'Cycle monitor not working at Bandra studio');
+    const sendButton = container.querySelector('svg.lucide-send')?.closest('button');
+    expect(sendButton).toBeTruthy();
+    await user.click(sendButton as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(hoisted.invokeTicketingFunction).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Which bike, monitor, or exact PowerCycle area is affected/i)).toBeTruthy();
+    });
+    expect(screen.queryByText(/Open review modal/i)).toBeNull();
+    expect(screen.queryByText(/Review ticket draft/i)).toBeNull();
   });
 });

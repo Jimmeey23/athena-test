@@ -62,6 +62,10 @@ describe('shouldReplaceInferredCategory', () => {
   it('allows a generic category to be refined by inference', () => {
     expect(shouldReplaceInferredCategory('General Feedback', 'Repair and Maintenance')).toBe(true);
   });
+
+  it('allows theft-specific inference to replace broad safety routing', () => {
+    expect(shouldReplaceInferredCategory('Safety and Security', 'Theft and Lost Items')).toBe(true);
+  });
 });
 
 describe('shouldAcceptInferredSubCategory', () => {

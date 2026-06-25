@@ -78,12 +78,13 @@ Do not use a fixed list of fields. Reason about this specific incident and decid
 For example: a broken door at the studio entrance raises different questions than one in the locker room — one has overnight security implications, the other does not. A washing machine not draining needs different questions than one that won't turn on. A trainer late to a 7am class has different urgency than one late to a 7pm class. Always think contextually.
 
 You are NOT limited to canonical/master-data fields. You are expected to add the incident-specific questions an owner would need. Build the form from what THIS incident requires — invent targeted snake_case fields freely for anything that isn't a canonical field.
-Worked example — "Instructor arrived late for the barre class". A good intake does NOT stop at studio + member. Plan and ask the gaps that actually let an owner act and close the loop:
+Worked example — "Instructor arrived late for the barre class" (INSTRUCTOR lateness — not member lateness). A good intake does NOT stop at studio + member. Plan and ask the gaps that actually let an owner act and close the loop:
 - which session and its scheduled start time (use classType for the Momence session picker), and how late the instructor was;
 - whether advance notice was given, and if so how far ahead;
 - the reason for the late arrival;
 - how members reacted — were they upset, did anyone leave, was the class shortened or delayed;
 - whether service recovery or a member-facing follow-up is expected, and the requested outcome.
+IMPORTANT: This worked example applies ONLY when the INSTRUCTOR was late. A member arriving late and being denied entry is a different incident type — see MEMBER ENTRY / POLICY ENFORCEMENT INCIDENTS below. Never apply instructor-lateness questions (minutes_late, advance_notice) to member access incidents.
 Apply the same depth to every incident family: capture cause, timing, impact, and expected outcome — not just identifiers. Ask the 1-2 highest-value gaps per turn until the picture is complete, then draft.
 
 IMPORTANT — for physical, maintenance, or facility issues:
@@ -102,6 +103,7 @@ FORM DESIGN RULES:
 - Use text only for genuinely unknown names/references that do not have a picker. Use textarea only for open narrative context such as reason, observed issue detail, or member wording that cannot be captured by options.
 - Field IDs must be snake_case and self-describing (e.g. door_fault_type, current_access_situation).
 - Never ask for reportedBy — the frontend supplies it from the signed-in user.
+- Never generate a field with id "resolutionRequired" or "resolution_required" — this gate is removed. All reported issues require resolution by definition.
 - FIELD TYPE ENFORCEMENT (critical): Never use type "text" for: (a) any date or time — use "date" or "datetime-local"; (b) any field with a bounded set of options — use "select" with options array; (c) studio location — use "select" with the known studio list from master data. A text input for date or location will render as a plain text box with no picker — this is always wrong.
 - DO NOT ASK IRRELEVANT QUESTIONS: Before adding any field, ask: "Would the ticket owner be unable to resolve or route this ticket without this answer?" If no, omit the field. Never ask for studio/location if the report is not studio-specific. Never ask for date/time if the incident is not time-sensitive. Never ask for member details on internal/facility issues unless a member is directly involved.
 - If staff seem stressed or describe something urgent, acknowledge it briefly before asking the next question.
@@ -116,6 +118,37 @@ INTAKE INFERENCE:
 - Infer the best category and subcategory from approved master data — do not require manual selection
 - Infer priority with a short urgency reason
 - Always populate inferredContext with category, subCategory, intakeRoute, and priority once inferred, even while asking for more details
+- SUBCATEGORY SPECIFICITY (critical): Always pick the most specific subcategory available in master data. Never write "Other" when a specific subcategory exists that matches the incident. Read the available subcategory list carefully before deciding. Examples: "money stolen from locker" → "Locker Theft" not "Other"; "trainer arrived 20 minutes late" → the most specific trainer-lateness subcategory; "AC not working" → the most specific HVAC subcategory. "Other" is a last resort only when the incident genuinely does not match any listed subcategory.
+
+TRAINER PUNCTUALITY / LATE INSTRUCTOR INCIDENTS — MINIMUM INTAKE BEFORE DRAFTING:
+This section applies ONLY when the INSTRUCTOR/TRAINER arrived late or did not show — NOT when a member arrived late.
+For late instructor or no-show reports, collect these before drafting:
+- Which instructor (trainer field) and which session (classType)
+- Scheduled start time and how many minutes late (use number field: minutes_late)
+- Was advance notice given, and if so how far ahead?
+- How did members react — did anyone leave, was the class shortened or disrupted?
+- Is service recovery or a member-facing follow-up expected?
+Ask 2 of these per turn until the picture is complete. The worked example in the system prompt applies exactly here.
+
+MEMBER ENTRY / POLICY ENFORCEMENT INCIDENTS:
+This section applies when a MEMBER was refused entry or denied access — due to late arrival, dress code, capacity, unpaid balance, or any other policy reason.
+Do NOT apply the trainer punctuality template. The relevant context here is:
+- Which class or session the member was attempting to attend (use classType)
+- Which policy was applied (e.g. late-entry policy, dress code, capacity limit)
+- Whether the member disputed the decision or escalated
+- Whether any exception was requested or offered
+- What resolution or follow-up the reporter or member expects
+Do not ask "how many minutes late" or "was advance notice given" for member access incidents — these questions belong only to instructor lateness. Do not empathise with the member as if they are at fault or wronged — staff reporting a policy enforcement are doing their job correctly. Acknowledge the staff's action professionally.
+
+SAFETY, SECURITY, AND THEFT INCIDENTS — MINIMUM INTAKE BEFORE DRAFTING:
+For any theft report (money, valuables, personal items stolen), security breach, or safety emergency — do NOT draft after collecting only the incident time. These incidents require additional operational context before the ticket can be actionable:
+- What was stolen / what is the nature of the security threat?
+- Approximate value or amount (if theft of money or valuables)
+- Locker/storage condition — was entry forced, or was there no visible sign of tampering?
+- Has studio management or security been notified yet?
+- Is there CCTV coverage of the affected area?
+- What outcome does the member or reporter want (police complaint filed, investigation, refund)?
+Ask 2-3 of these per turn (grouped as a form if multiple fields needed) until the picture is complete. Critical priority does not bypass intake — it means escalate faster once the picture is complete.
 
 ENTITY FIELDS — memberName, memberContact, classType, classDateTime, trainer, sessionId, membership:
 These fields refer to specific Momence records. Use them when the user's message or current context makes the record useful for resolving the ticket.
@@ -125,7 +158,8 @@ When unsure, ask the most natural clarifying question rather than forcing a gene
 MEMBER COMMERCIAL / CLASS-ACCESS INCIDENTS:
 For commercial, refund, billing, membership, class-entry, and policy-dispute reports, reason from the current issue rather than a fixed verification checklist.
 Do not automatically ask for Momence purchase/payment context, membership, studio, incident date, or sentiment. Ask for one of those only when the current ticket cannot be routed or resolved without it.
-Use existing canonical fields when they are genuinely relevant: memberName for a named/identifiable member, membership for a specific package decision, classType for a specific session dispute, desiredResolution for an unclear requested outcome, and momencePurchaseContext only when payment/purchase evidence is central to the decision.
+Use existing canonical fields when they are genuinely relevant: memberName for a named/identifiable member, membership for a specific package decision, classType ONLY when the dispute is specifically about a single identifiable class booking, desiredResolution for an unclear requested outcome, and momencePurchaseContext only when payment/purchase evidence is central to the decision.
+CRITICAL: For refund, billing, or pricing disputes, do NOT ask for classType or class session details unless the dispute is explicitly about a specific booking. The priority fields to capture are: reason for refund/dispute, what resolution was already offered, and the member's expected outcome. Class-type questions derail refund intake and confuse reporters.
 For issue-specific gaps such as "reason for refund", "policy communication received", or "resolution already offered", create targeted snake_case fields rather than a generic description field.
 Do not hardcode member names, studio names, instructors, package names, or response scripts. Ask only for context that is missing from the current conversation, selected Momence context, or the draft itself.
 
@@ -153,6 +187,9 @@ CONVERSATION STYLE:
 - Use one relevant emoji occasionally when it feels natural. Never in formal ticket titles, descriptions, field values, report copy, IDs, emails, or records.
 - When staff describe something that sounds stressful or serious (a member walked out, an injury, a safety issue), acknowledge it first with a brief human response ("That sounds stressful — let me help you log this properly.") before diving into questions.
 - When wrapping up intake before drafting, give a brief reassuring summary of what you've captured so staff feel confident before reviewing the draft.
+
+DRAFT READY — REPLY RULES (critical):
+When you have enough context to produce a ticket draft, set ticket in your JSON response and keep your chat reply SHORT — one or two sentences maximum. The full draft (title, description, priority, resolution steps, metadata) appears automatically in the sidebar card. You must NOT narrate or repeat the ticket content in your chat message. Never say "Here's a summary of the ticket I'm about to create" or list fields/steps in the reply. Never ask "Would you like me to go ahead and create this ticket?" or any variation — the reporter clicks Publish in the sidebar when ready. Your reply should only acknowledge what you captured and invite them to review the draft. Example good reply: "Got it — I've drafted the maintenance ticket for Kwality House. Review it in the sidebar and hit Publish when ready." Example bad reply: "Here's a summary of the ticket: Title: Washing machine... Priority: High... Steps: 1. Inspect..." — do not do this.
 
 TICKET QUALITY:
 - Title: specific operational summary — name the exact item, area, studio, or person involved. Never generic like "Maintenance issue" or "Member complaint".
@@ -289,6 +326,8 @@ const PRIORITY_SLA_HOURS: Record<Priority, number> = {
 
 const PLACEHOLDER_VALUE_PATTERN = /unspecified|not specified|member-reported issue|ai intake|authenticated user/i;
 const HVAC_TEXT_PATTERN = /\b(?:ac|hvac)\b|air\s?con|air conditioning|not cooling|not heating|no airflow/i;
+const THEFT_OR_LOST_ITEM_PATTERN = /\b(theft|stolen|steal|robbed|missing cash|cash missing|money missing|money was missing|missing money|cash envelope|valuables? missing|personal items? missing|bag tampered|bag was open|locker tamper|locker break-?in|lost and found|left (?:her|his|their|my|a|the)?\s*(?:shoes?|gear|bag|bottle|phone|wallet|valuables?)|misplaced (?:shoes?|gear|bag|bottle|phone|wallet|valuables?))\b/i;
+const POWERCYCLE_MONITOR_DAMAGE_PATTERN = /\b(?:cycle|power\s*cycle|powercycle|spin)\b.{0,48}\b(?:monitor|console|display|screen)\b|\b(?:monitor|console|display|screen)\b.{0,48}\b(?:crack|cracked|broken|damaged|not working|faulty)\b/i;
 const CLIENTS_AFFECTED_OPTIONS = [
   'Yes - directly affected',
   'Yes - indirectly affected',
@@ -329,29 +368,78 @@ function normalizeDepartmentName(department?: string | null): string {
   return DEPARTMENTS.find((item) => item.toLowerCase() === normalized) || department || 'Management';
 }
 
+function inferTheftOrLostItemSubCategory(lower: string): string | null {
+  if (!THEFT_OR_LOST_ITEM_PATTERN.test(lower)) return null;
+  if (/trainer|instructor|staff area|trainer area|employee area/.test(lower)) return 'Personal Items Taken from Trainer Area';
+  if (/locker|changing room|change room|locker room|shower area|cash envelope|missing cash|cash missing|money missing|missing money|bag tamper|bag was open|locker break/.test(lower)) return 'Locker Theft';
+  if (/lost and found|left .*shoes?|lost .*shoes?|shoes?|workout gear/.test(lower)) return 'Lost Shoes/Workout Gear';
+  if (/boutique|retail/.test(lower)) return 'Items Taken from Boutique';
+  if (/valet|parking/.test(lower)) return 'Issues with Valet Theft';
+  if (/left behind|misplaced|forgot|forgetting|lost\b/.test(lower)) return 'Misplaced Valuables';
+  if (/member|client|community/.test(lower)) return 'Stolen Personal Items';
+  return 'Reporting Stolen Items';
+}
+
+function isGenericClassificationValue(value: unknown): boolean {
+  const cleaned = cleanString(value).toLowerCase();
+  return !cleaned || cleaned === 'other' || cleaned === 'general feedback' || cleaned === 'member-reported issue';
+}
+
+function shouldPreferSpecificClassification(current: Record<string, unknown>, inferred: Record<string, string>): boolean {
+  if (!cleanString(inferred.category) || inferred.category === 'General Feedback') return false;
+  if (isGenericClassificationValue(current.category) || isGenericClassificationValue(current.subCategory)) return true;
+  if (inferred.category === cleanString(current.category) && !isGenericClassificationValue(inferred.subCategory)) return true;
+  return inferred.category === 'Theft and Lost Items' && /safety|security/i.test(cleanString(current.category));
+}
+
+function mergeSpecificInferredClassification(
+  current: Record<string, unknown>,
+  inferred: Record<string, string>,
+): Record<string, unknown> {
+  if (!shouldPreferSpecificClassification(current, inferred)) return current;
+  return {
+    ...current,
+    category: inferred.category,
+    subCategory: inferred.subCategory || current.subCategory,
+    priority: current.priority || inferred.priority,
+    studio: current.studio || inferred.studio,
+  };
+}
+
+function applySpecificClassificationToDraft(
+  draft: DraftTicket | null,
+  context: Record<string, unknown>,
+): DraftTicket | null {
+  if (!draft) return null;
+  const merged = mergeSpecificInferredClassification(draft as unknown as Record<string, unknown>, {
+    category: cleanString(context.category),
+    subCategory: cleanString(context.subCategory),
+    priority: cleanString(context.priority),
+    studio: cleanString(context.studio),
+  });
+  return {
+    ...draft,
+    category: cleanString(merged.category, draft.category),
+    subCategory: cleanString(merged.subCategory, draft.subCategory),
+    priority: normalizePriority(merged.priority || draft.priority),
+    studio: cleanString(merged.studio, draft.studio),
+  };
+}
+
 const CATEGORY_SUBCATEGORIES: Record<string, string[]> = {
-  Scheduling: ['Time Change', 'Level Change', 'Additional Classes', 'Trainer Preferences', 'Class Capacity Issues', 'Waitlist Concerns', 'Studio Timings', 'Cancellation Policy', 'Booking Restrictions', 'Class Substitutions', 'Trainer Substitutions', 'Last-minute Cancellations', 'Late Arrival Policy', 'Booking Confirmation Issues', 'Rescheduling Flexibility'],
-  'Class Experience': ['Bad Odour', 'Audio Issues', 'Studio Temperature Too Hot/Cold', 'Overcrowding in Class', 'Class Flow and Pacing', 'Modifications in Routine', 'Engagement with Clients', 'Hands-on Adjustments', 'Demonstration and Visual Cues', 'Knowledge and Competence', 'Instructor Energy and Motivation', 'Class Variety and Themes'],
-  'Trainer Feedback': ['Trainer Forgot Names', 'Class Intensity Too High/Low', 'Trainer Hygiene', 'Trainer Punctuality Issues', 'Trainer Behaviour', 'Modifications in Routine', 'Engagement with Clients', 'Hands-on Adjustments', 'Demonstration and Visual Cues', 'Knowledge and Competence', 'Brand Language Usage', 'Pre and Post-Class Outreach', 'Trainer Availability', 'Feedback Handling', 'Trainer Encouragement', 'Too Many Corrections vs. Too Few'],
-  'Repair and Maintenance': ['AC and HVAC Issues', 'Lighting Issues', 'Audio System Malfunction', 'Pest Control Needed', 'Plumbing Leaks', 'General Maintenance Delays', 'Door Lock Issues', 'Fire Safety Compliance', 'Water Dispenser Issues', 'Broken Equipment', 'TFA Malfunction', 'Staff Uniforms Not Clean', 'Toiletries and Supplies Low', 'Towel Availability Issues'],
-  'Studio Amenities and Facilities': ['Studio Odour and Aroma', 'Cleanliness and Hygiene', 'Ventilation Poor', 'Air Quality Poor', 'Valet Issues', 'Locker Availability', 'Shower Water Pressure', 'Steam Room Not Working', 'Boutique Availability Issues', 'Wi-Fi Slow', 'Lost and Found Disorganization'],
-  'Operating Systems': ['Momence Issues', 'Stripe and Razorpay', 'Website Glitches', 'Router Connectivity', 'iPad Functionality', 'POS System Malfunctions', 'Payment Gateway Issue', 'Technical Assistance'],
-  'Pricing and Memberships': ['Membership Pause and Freeze Policy', 'Refund and Cancellation Policy Issue', 'Membership Upgrade/Downgrade', 'Class Pack Expiry Confusion', 'Late Cancellation Fee Dispute', 'Complimentary Class Request', 'Trial Class Conversion', 'Package Renewal', 'Credit/Rollover Request'],
-  'Customer Service and Communication': ['Delay in Response', 'Staff Behaviour', 'WhatsApp Follow-up Missed', 'Email Not Responded', 'Front Desk Issue', 'Member Not Informed', 'Communication Gap'],
-  'Safety and Security': ['Theft Prevention Measures', 'Harassment Reports', 'Personal Safety Concerns', 'Security Breach', 'Emergency Incident'],
-  'Hosted Class & Partnerships': ['Hosted Class Feedback', 'Prospect Conversion Opportunity', 'Partner Instructor Feedback', 'Lead Quality Note', 'Guestlist Issue', 'Collaboration Request'],
-  'App & Digital': ['App Crash', 'Login Issue', 'Push Notifications', 'Payment Gateway Issue', 'Momence Account Sync', 'Booking Confirmation Missing', 'Website Chat / Lead Form Issue'],
-  'Sales & Consultation': ['Competitor Mentioned', 'Prospect Price Concern', 'Lead Quality Note', 'Trial Conversion', 'Drop-in Query'],
-  'Brand Feedback': ['Brand Language Usage', 'Marketing Feedback', 'Social Media Feedback', 'Event Feedback'],
-  'Member Progress & Transformation': ['Injury Concern', 'Goal Setting', 'Progress Tracking', 'Modification Request', 'Return from Injury'],
-  'Theft and Lost Items': ['Lost Item', 'Stolen Item', 'Found Item', 'Locker Break-in'],
-  'General Feedback': ['Compliment', 'Suggestion', 'General Comment', 'Other'],
-  'Facility & Equipment': ['Broken Equipment', 'Bike / Cycle Issue', 'Monitor Malfunction', 'Barre Equipment', 'Props and Accessories', 'AC and HVAC Issues', 'Plumbing Leaks', 'Lighting Issues', 'Door Lock Issues', 'General Maintenance'],
-  'Billing & Membership': ['Refund Request', 'Membership Freeze', 'Rollover Request', 'Package Expiry', 'Late Cancellation Fee', 'Upgrade / Downgrade', 'Credit Request', 'Billing Dispute'],
-  'Booking & Schedule': ['Class Availability', 'Waitlist Issue', 'Booking Confirmation', 'Rescheduling', 'Late Arrival', 'Cancellation Policy', 'Trainer Substitution'],
-  'Instructor & Class Quality': ['Class Flow', 'Instructor Energy', 'Engagement', 'Modifications', 'Hands-on Adjustments', 'Intensity Level', 'Knowledge and Cues'],
-  'Front Desk & Service': ['Staff Behaviour', 'Delay in Response', 'Communication Gap', 'Check-in Issue', 'Member Not Informed'],
-  'Safety & Medical': ['Injury on Premises', 'Medical Emergency', 'First Aid Required', 'Unsafe Equipment', 'Security Breach'],
+  'Scheduling': ['Time Change', 'Level Change', 'Additional Classes', 'Trainer Preferences', 'Class Capacity Issues', 'Waitlist Concerns', 'Studio Timings', 'Session Length', 'Cancellation Policy', 'Booking Restrictions', 'Class Substitutions', 'Trainer Substitutions', 'Last-minute Cancellations', 'Late Arrival Policy', 'Special Request Accommodations', 'Early Morning/Late Night Class Availability', 'Weekend vs. Weekday Class Balance', 'Rescheduling Flexibility', 'Booking Confirmation Issues', 'Holiday and Festival Class Planning'],
+  'Class Experience': ['Bad Odour', 'Audio Issues', 'Studio Temperature Too Hot/Cold', 'Overcrowding in Class', 'Class Flow and Pacing', 'Modifications in Routine', 'Engagement with Clients', 'Hands-on Adjustments', 'Demonstration and Visual Cues', 'Knowledge and Competence', 'Brand Language Usage', 'Grooming and Appearance', 'Attendance for Workshops', 'Attendance for Meetings', 'Class Format Satisfaction', 'Class Duration Suitability', 'Instructor Energy and Motivation', 'Class Variety and Themes', 'Adjustments for Different Fitness Levels', 'Challenges in Following Instructor'],
+  'Trainer Feedback': ['Trainer Forgot Names', 'Class Intensity Too High/Low', 'Trainer Hygiene', 'Trainer Punctuality Issues', 'Trainer Behaviour', 'Modifications in Routine', 'Engagement with Clients', 'Hands-on Adjustments', 'Demonstration and Visual Cues', 'Knowledge and Competence', 'Brand Language Usage', 'Pre and Post-Class Outreach', 'Trainer Availability', 'Feedback Handling', 'Emergency Preparedness', 'Trainer Focus on Individual Needs', 'Class Ending on Time', 'Trainer Encouragement', 'Injury Prevention and Safety', 'Too Many Corrections vs. Too Few'],
+  'Repair and Maintenance': ['AC and HVAC Issues', 'TFA Malfunction', 'Lighting Issues', 'Studio System Malfunction', 'Pest Control Needed', 'Staff Uniforms Not Clean', 'Toiletries and Supplies Low', 'Towel Availability Issues', 'Plumbing Leaks', 'General Maintenance Delays', 'Uncomfortable Lounge Seating', 'Air Fresheners Too Strong', 'Music System Too Loud/Low', 'Vending Machine Out of Stock', 'Additional Waiting Area Seating', 'Door Lock Issues', 'Fire Safety Compliance', 'Water Dispenser Issues', 'Dust and Mold in Corners', 'Broken Equipment Not Repaired'],
+  'Studio Amenities and Facilities': ['Studio Odour and Aroma', 'Cleanliness and Hygiene', 'Ventilation Poor', 'Air Quality Poor', 'Valet Issues', 'Locker Availability', 'Shower Water Pressure', 'Steam Room Not Working', 'Boutique Availability Issues', 'Wi-Fi Slow', 'Integration Issues', 'Lost and Found Disorganization', 'Availability of Gym Accessories', 'Fitness Challenges and Rewards', 'Additional Membership Perks', 'Smoothie Bar and Refreshments', 'Member Lounge Cleanliness', 'Community Events and Social Engagement', 'Holiday-Themed Classes', 'Sustainable and Eco-Friendly Practices'],
+  'Operating Systems': ['Momence Issues', 'Stripe and Razorpay', 'Yellow Messenger', 'Website Glitches', 'Router Connectivity', 'iPad Functionality', 'Cash Counting Machine Issues', 'POS System Malfunctions', 'CRM System Errors', 'Data Security Issues', 'Technical Assistance', 'Difficulty Tracking Sessions', 'System Delays', 'Software Bugs', 'Mobile App UI/UX Issues', 'Attendance Record Discrepancies', 'Missed Sessions Not Recorded', 'Mobile App Freezing', 'Delayed Notifications', 'Error in Class Listings'],
+  'Tech Issues': ['Laptops Not Functioning', 'Speakers Static Noise', 'Mic Not Working', 'Phones Not Working', 'App Performance Bugs', 'Booking System Errors', 'Password and Login Issues', 'Payment Processing Delays', 'Online Class Streaming Buffering', 'Notifications Not Received', 'Auto-Debit Incorrect Charges', 'Social Media Glitches', 'Wrong Class Bookings', 'Incorrect Charges on Account', 'Studio Music Preferences', 'Camera Surveillance Issues', 'Digital Receipts and Invoices', 'Website Navigation Difficulties', 'Virtual Class Video Quality', 'Studio Wi-Fi Not Working'],
+  'Pricing and Memberships': ['Price Transparency', 'Membership Flexibility', 'Discounts and Offers Confusion', 'Refund and Cancellation Policy Issue', 'Auto-Renewal Concerns', 'Transparency in T&C', 'Add-on Services Pricing Clarity', 'Class Pack Expiry Confusion', 'Private Session Pricing', 'Membership Upgrade/Downgrade', 'Lack of Payment Plan Options', 'Referral Discount Issues', 'Holiday and Special Pricing Clarity', 'Corporate Wellness Program Pricing', 'Pricing for International Clients', 'Membership Pause and Freeze Policy', 'Special Group Discounts', 'Loyalty Program Issues'],
+  'Customer Service and Communication': ['Delay in Response', 'Unresolved Complaints', 'Front Desk Attitude', 'Miscommunication on Offers', 'Response Time to Queries', 'Follow-up Post Inquiry', 'Friendliness and Approachability', 'Call Handling Etiquette', 'Clarity in Policies', 'Late Response to Complaints', 'Handling of Complaints', 'Feedback Follow-up Process', 'Compensation for Service Issues', 'Customer Retention Strategies', 'Over-promising and Under-delivery', 'Response to Negative Reviews', 'Training of Customer Service Team', 'Training of Sales Team', 'Knowledge of Membership Policies', 'Proactive Client Engagement'],
+  'Brand Feedback': ['Brand Positioning', 'Brand Identity Consistency', 'Marketing Message Accuracy', 'Brand Tone Consistency', 'Social Media Engagement', 'Advertising Consistency', 'Collaborations and Partnerships', 'Merchandise Quality', 'Member Recognition Efforts', 'Influencer Engagement', 'Staff Wearing Incorrect Branding', 'Merchandise Display Issues', 'Branded Content Guidelines', 'Member Recognition Events', 'Newsletter Effectiveness', 'Brand Perception in Market', 'Perception of Pricing Value', 'Client Testimonials Management', 'Client Loyalty Recognition', 'Brand Event Participation'],
+  'Safety and Security': ['Emergency Exits Blocked', 'Panic Button Malfunction', 'Unlocked Doors', 'CCTV Malfunction', 'Security Guard Issues', 'Client Harassment Reports', 'Fire Drills Not Conducted', 'Suspicious Individuals Inside Studio', 'Front Desk Not Checking IDs', 'Unregistered Walk-ins', 'Trespassing Concerns', 'Personal Safety Concerns', 'Harassment Reports', 'Data Breach Concerns', 'Employee Security Training', 'Reporting Suspicious Activity', 'Staff Security Concerns', 'Handling of Medical Emergencies', 'First Aid Kit Availability', 'Unauthorized Use of Equipment'],
+  'Theft and Lost Items': ['Locker Theft', 'Stolen Personal Items', 'Misplaced Valuables', 'Items Taken from Boutique', 'Items Left Behind by Clients', 'Studio Lost and Found Management', 'Staff Theft', 'Reporting Stolen Items', 'Theft Prevention Measures', 'Theft Investigation Process', 'Personal Items Taken from Trainer Area', 'Issues with Valet Theft', 'Theft by Other Members', 'Lost Shoes/Workout Gear', 'Safe Storage for Client Bags', 'Clients Forgetting Items in Studio', 'Missing Towels', 'Theft During Busy Hours', 'Members Taking Extra Equipment'],
+  'Miscellaneous': ['Music Volume Issues', 'Studio Decor and Ambience', 'Mobile Charging Stations', 'Late-Night Class Safety', 'Noise Complaints from Neighbors', 'Misplaced Equipment', 'Temperature Control Inconsistency', 'Scent Sensitivities', 'Lighting Preferences', 'Cold Air Drafts', 'Overcrowding in Lobby', 'Construction Noise Nearby', 'Child-Friendly Facilities', 'Outdoor Signage Visibility', 'Feedback Fatigue', 'Personal Storage Lockers Needed', 'Background Music Selection', 'Social Media Response Time', 'Customer Flow Management'],
 };
 
 const ASSIGNMENT_RULES: Record<string, { assignedTo: string; team: string }> = {
@@ -565,11 +653,14 @@ function fallbackDraft(messages: ChatMessage[] = [], context: Record<string, unk
   const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content || '';
   const text = cleanString(context.description) || latestUserMessage.replace(/\[Context[^\n]*\]\n?/i, '').trim();
   const lower = text.toLowerCase();
+  const theftOrLostItemSubCategory = inferTheftOrLostItemSubCategory(lower);
   let inferredCategory = 'General Feedback';
   if (/billing|refund|payment|freeze|roll over|rollover|extension|membership|package/.test(lower)) {
     inferredCategory = 'Pricing and Memberships';
   } else if (/hosted|partner|influencer/.test(lower)) {
     inferredCategory = 'Hosted Class & Partnerships';
+  } else if (theftOrLostItemSubCategory) {
+    inferredCategory = 'Theft and Lost Items';
   } else if (/injury|safety|medical|security|theft|stolen|missing cash|harass/.test(lower)) {
     inferredCategory = 'Safety and Security';
   } else if (/repair|maintenance|broken|not working|not closing|not opening|stopped working|won't close|won't open|malfunction|faulty|damaged|leak|leaking|plumbing|drain|clog|flush|machine|washing|dryer|pump|electrical|socket|bulb|pest|mold|mould|crack|\bdoor\b|\block\b|handle|hinge/.test(lower) || HVAC_TEXT_PATTERN.test(lower)) {
@@ -584,7 +675,7 @@ function fallbackDraft(messages: ChatMessage[] = [], context: Record<string, unk
   const priority: Priority =
     normalizePriority(context.priority || (category === 'Safety and Security' || category === 'Safety & Medical' ? 'Critical' : lower.includes('angry') || lower.includes('urgent') ? 'High' : 'Medium'));
 
-  const subCategory = cleanString(context.subCategory, category === 'General Feedback' ? 'Other' : 'Member-reported issue');
+  const subCategory = cleanString(context.subCategory, theftOrLostItemSubCategory || (category === 'General Feedback' ? 'Other' : 'Member-reported issue'));
   const includeMemberContext = shouldUseMemberContext(text, context, category, subCategory);
   const includeSessionContext = shouldUseSessionContext(text, context, category, subCategory);
   const titleParts = [
@@ -1007,7 +1098,10 @@ async function askAiForIntake(body: RequestBody, instructions: string, knowledge
       'For issue-specific fields, create clear snake_case IDs prefixed by the category or subcategory. Prefer select fields with options for every bounded answer. Use text/textarea only when the value is genuinely open-ended.',
       'Never ask constants, dates, timestamps, counts, amounts, priority, category, studio, sentiment, class impact, clients affected, status, or resolution yes/no as plain text. Use select/date/datetime-local/number.',
       'When exactly one select field is needed, prefer suggestedChips for that field so the UI renders button options. Keep detailForm null in that case unless a Momence picker is required.',
-      'Infer category and subCategory from the report whenever possible. Ask for category or subCategory only when the text is genuinely ambiguous after using the approved master data. ALWAYS pick subCategory from masterData.categorySubcategories[category] — never use "Other" unless it is explicitly listed there for that category.',
+      'SUBCATEGORY RULE (non-negotiable): You MUST pick subCategory from masterData.categorySubcategories[category]. Read the full subcategory list for the inferred category and pick the closest match. NEVER return "Other" as a subCategory. NEVER invent subcategories not in the list. Examples: "instructor arrived late" → category "Trainer Feedback", subCategory "Trainer Punctuality Issues"; "money stolen from locker" → category "Theft and Lost Items", subCategory "Locker Theft"; "AC broken" → category "Repair and Maintenance", subCategory "AC and HVAC Issues"; "refund request" → category "Pricing and Memberships", subCategory "Refund and Cancellation Policy Issue". When in doubt, pick the most operationally specific subcategory.',
+      'EQUIPMENT ROUTING: PowerCycle bike, monitor, console, display, or screen damage belongs to category "Repair and Maintenance" and subCategory "Broken Equipment", not "TFA Malfunction". Example: "cycle monitor screen cracked" → "Broken Equipment". Ask for the bike/monitor number or exact PowerCycle area before drafting if it is not known.',
+      'QUESTION LIMIT: There is NO limit on the number of questions you may ask. Keep asking clarifying questions until all necessary context is captured. Never rush to draft.',
+      'DRAFT QUALITY GATE: Never draft a ticket unless you have enough detail to write a specific, actionable description. A draft with placeholder-like phrases like "member complained" or "issue reported" is not acceptable — keep asking until you have the specific details.',
       `Use clientsAffected only when member/client impact is relevant; valid values are: ${CLIENTS_AFFECTED_OPTIONS.join(', ')}.`,
       'If clientsAffected starts with "Yes" and specific affected members matter for resolution, use memberName so the frontend renders Momence member search.',
       `If a class/session/schedule was materially affected and the owner needs the session record, use classType, classImpactType, and classImpactDetails. classImpactType options: ${CLASS_IMPACT_TYPE_OPTIONS.join(', ')}.`,
@@ -1157,6 +1251,7 @@ function inferContextFromText(text: string, context: Record<string, unknown> = {
   }
 
   if (!cleanString(context.category)) {
+    const theftOrLostItemSubCategory = inferTheftOrLostItemSubCategory(lower);
     if (/momence|crm|zoho|data accuracy|handover|sop|standard operating|process|workflow|payroll|performance review|finance|reconciliation|upi|marketing|campaign|collateral|partnership approval|internal operations|internal memo/.test(lower)) {
       inferred.category = 'Operating Systems';
       inferred.subCategory = /momence|crm|data/.test(lower) ? 'Momence Issues' : /payment|upi|reconciliation|finance/.test(lower) ? 'Payment Gateway Issue' : 'Technical Assistance';
@@ -1166,6 +1261,9 @@ function inferContextFromText(text: string, context: Record<string, unknown> = {
     } else if (/billing|refund|payment|freeze|roll over|rollover|extension|membership|package|renewal|expiry|credit|late cancellation|waiver|upgrade/.test(lower)) {
       inferred.category = 'Pricing and Memberships';
       inferred.subCategory = /freeze|pause/.test(lower) ? 'Membership Pause and Freeze Policy' : /refund|waiver/.test(lower) ? 'Refund and Cancellation Policy Issue' : /upgrade|downgrade/.test(lower) ? 'Membership Upgrade/Downgrade' : 'Class Pack Expiry Confusion';
+    } else if (theftOrLostItemSubCategory) {
+      inferred.category = 'Theft and Lost Items';
+      inferred.subCategory = theftOrLostItemSubCategory;
     } else if (/injury|safety|medical|harassment|security|theft|stolen|missing cash|cash envelope|unsafe|faint|cramp|conflict/.test(lower)) {
       inferred.category = 'Safety and Security';
       inferred.subCategory = /theft|stolen|missing cash|cash envelope/.test(lower) ? 'Theft Prevention Measures' : /harass|conflict/.test(lower) ? 'Harassment Reports' : 'Personal Safety Concerns';
@@ -1177,6 +1275,7 @@ function inferContextFromText(text: string, context: Record<string, unknown> = {
       inferred.subCategory = HVAC_TEXT_PATTERN.test(lower) ? 'AC and HVAC Issues'
         : /light|bulb|fused|flickering/.test(lower) ? 'Lighting Issues'
         : /audio|speaker|mic|sound/.test(lower) ? 'Audio System Malfunction'
+        : POWERCYCLE_MONITOR_DAMAGE_PATTERN.test(lower) ? 'Broken Equipment'
         : /leak|plumbing|drain|flush|sewage|overflow|clog|pipe/.test(lower) ? 'Plumbing Leaks'
         : /pest|cockroach|rat|rodent|insect|ant/.test(lower) ? 'Pest Control Needed'
         : /\bdoor\b|\block\b|latch|hinge/.test(lower) ? 'Door Lock Issues'
@@ -1266,8 +1365,8 @@ function requiredFieldsForIssue(
   const studioCategories = new Set([
     'Scheduling', 'Class Experience', 'Trainer Feedback', 'Repair and Maintenance',
     'Studio Amenities and Facilities', 'Safety and Security', 'Theft and Lost Items',
-    'Miscellaneous', 'Instructor & Class Quality', 'Booking & Schedule',
-    'Facility & Equipment', 'Front Desk & Service', 'Safety & Medical',
+    'Miscellaneous', 'Tech Issues', 'Operating Systems', 'Customer Service and Communication',
+    'Brand Feedback', 'Pricing and Memberships',
   ]);
   if (studioCategories.has(category)) add('studio', context.studio);
 
@@ -1578,7 +1677,12 @@ Deno.serve(async (request) => {
     const aiResponse = await askAiForIntake(bodyWithEffectiveContext, instructions, knowledgeContext);
 
     if (aiResponse) {
-      const aiContext = { ...effectiveBodyContext, ...(aiResponse.inferredContext || {}) };
+      const deterministicContext = inferContextFromText(rawIssueText, effectiveBodyContext);
+      const aiContext = mergeSpecificInferredClassification({
+        ...effectiveBodyContext,
+        ...deterministicContext,
+        ...(aiResponse.inferredContext || {}),
+      }, deterministicContext);
 
       // Run deterministic guard against the merged context so the AI cannot skip
       // required fields (e.g. category, studio, clientsAffected) by claiming needsMoreInfo=false
@@ -1595,7 +1699,8 @@ Deno.serve(async (request) => {
       const finalForm = mergeGuardFloorIntoForm(filteredAiForm, guardedMissingFields);
 
       const needsMoreInfo = aiResponse.needsMoreInfo || finalForm !== null || guardedMissingFields.length > 0;
-      const aiTicket = needsMoreInfo ? null : withRecommendedResolutionMetadata(aiResponse.ticket || fallbackDraft(messages, aiContext));
+      const correctedAiTicket = applySpecificClassificationToDraft(aiResponse.ticket, aiContext);
+      const aiTicket = needsMoreInfo ? null : withRecommendedResolutionMetadata(correctedAiTicket || fallbackDraft(messages, aiContext));
       const remainingMissingFields = guardedMissingFields.filter(
         (field) => !(finalForm?.fields || []).some((f) => f.id === field),
       );
@@ -1631,7 +1736,7 @@ Deno.serve(async (request) => {
         detailForm: finalForm,
         ticket: aiTicket,
         suggestedChips: aiResponse.suggestedChips || [],
-        inferredContext: aiResponse.inferredContext || {},
+        inferredContext: aiContext,
         missingFields: aiResponse.missingFields || [],
         publishable: !needsMoreInfo && aiResponse.publishable === true,
         urgencyReason: aiResponse.urgencyReason || '',

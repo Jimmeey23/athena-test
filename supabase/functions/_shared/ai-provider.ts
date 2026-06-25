@@ -17,6 +17,7 @@ export interface JsonAiRequest {
 type EnvReader = (name: string) => string | undefined;
 
 const PROVIDERS = new Set<AiProvider>(['deepseek', 'openai', 'claude', 'lovable']);
+const DEFAULT_JSON_MAX_TOKENS = 2200;
 
 function clean(value: string | undefined): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -24,6 +25,11 @@ function clean(value: string | undefined): string {
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
+}
+
+function numberFromEnv(value: string | undefined, fallback: number): number {
+  const parsed = Number(clean(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export function normalizeAiProvider(value?: string | null, fallback: AiProvider = 'deepseek'): AiProvider {
@@ -46,7 +52,7 @@ export function resolveAiProviderConfig(env: EnvReader, requestedProvider?: stri
       apiKey,
       model: clean(env('LOVABLE_MODEL')) || 'google/gemini-2.5-flash',
       baseUrl: trimTrailingSlash(clean(env('LOVABLE_BASE_URL')) || 'https://ai.gateway.lovable.dev/v1'),
-      maxTokens: Number(clean(env('LOVABLE_MAX_TOKENS'))) || 3000,
+      maxTokens: numberFromEnv(env('LOVABLE_MAX_TOKENS'), DEFAULT_JSON_MAX_TOKENS),
     };
   }
 
@@ -58,7 +64,7 @@ export function resolveAiProviderConfig(env: EnvReader, requestedProvider?: stri
       apiKey,
       model: clean(env('OPENAI_MODEL')) || 'gpt-4o-mini',
       baseUrl: trimTrailingSlash(clean(env('OPENAI_BASE_URL')) || 'https://api.openai.com/v1'),
-      maxTokens: Number(clean(env('OPENAI_MAX_TOKENS'))) || 3000,
+      maxTokens: numberFromEnv(env('OPENAI_MAX_TOKENS'), DEFAULT_JSON_MAX_TOKENS),
     };
   }
 
@@ -70,7 +76,7 @@ export function resolveAiProviderConfig(env: EnvReader, requestedProvider?: stri
       apiKey,
       model: clean(env('ANTHROPIC_MODEL') || env('CLAUDE_MODEL')) || 'claude-haiku-4-5',
       baseUrl: trimTrailingSlash(clean(env('ANTHROPIC_BASE_URL') || env('CLAUDE_BASE_URL')) || 'https://api.anthropic.com/v1'),
-      maxTokens: Number(clean(env('ANTHROPIC_MAX_TOKENS') || env('CLAUDE_MAX_TOKENS'))) || 3000,
+      maxTokens: numberFromEnv(env('ANTHROPIC_MAX_TOKENS') || env('CLAUDE_MAX_TOKENS'), DEFAULT_JSON_MAX_TOKENS),
     };
   }
 
@@ -81,7 +87,7 @@ export function resolveAiProviderConfig(env: EnvReader, requestedProvider?: stri
     apiKey,
     model: clean(env('DEEPSEEK_MODEL')) || 'deepseek-v4-pro',
     baseUrl: trimTrailingSlash(clean(env('DEEPSEEK_BASE_URL')) || 'https://api.deepseek.com'),
-    maxTokens: Number(clean(env('DEEPSEEK_MAX_TOKENS'))) || 3000,
+    maxTokens: numberFromEnv(env('DEEPSEEK_MAX_TOKENS'), DEFAULT_JSON_MAX_TOKENS),
   };
 }
 
@@ -123,6 +129,7 @@ export function buildJsonAiRequest(
 
   const body: Record<string, unknown> = {
     model: config.model,
+    max_tokens: config.maxTokens,
     temperature,
     messages: [
       { role: 'system', content: systemContent },
@@ -182,7 +189,7 @@ export async function callJsonAi(
   const effectiveConfig: AiProviderConfig = {
     ...config,
     ...(input.model ? { model: input.model } : {}),
-    ...(input.maxTokens ? { maxTokens: input.maxTokens } : {}),
+    ...(typeof input.maxTokens === 'number' && input.maxTokens > 0 ? { maxTokens: input.maxTokens } : {}),
   };
 
   const request = buildJsonAiRequest(

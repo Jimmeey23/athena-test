@@ -17,8 +17,8 @@ export interface AthenaDraftRequestInput {
 
 export const ATHENA_PROMPT_PROFILE = 'athena-intake-v1';
 
-const DEFAULT_MESSAGE_LIMIT = 12;
-const MAX_MESSAGE_CHARS = 3000;
+const DEFAULT_MESSAGE_LIMIT = 10;
+const MAX_MESSAGE_CHARS = 2200;
 
 function truncateMessageContent(content: string): string {
   if (content.length <= MAX_MESSAGE_CHARS) return content;

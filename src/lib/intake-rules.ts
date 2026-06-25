@@ -529,6 +529,21 @@ export function isMissingIntakeValue(value: unknown): boolean {
 // is considered complete. Short initial reports for these are captured as preliminary only.
 const HVAC_TEXT_PATTERN = /\b(?:ac|hvac)\b|air\s?con|air conditioning|not cooling|not heating|no airflow/i;
 const PHYSICAL_ISSUE_TEXT_PATTERN = /repair|maintenance|broken|not working|not closing|not opening|stopped working|won't close|won't open|not cooling|not heating|too hot|too cold|very hot|very cold|temperature|malfunction|faulty|damaged|come off|came off|loose|leak|leaking|plumbing|drain|clog|flush|sewage|socket|electrical|bulb|fused|flickering|machine|washing|dryer|pump|pest|mold|damp|\bdoor\b|\block\b|\bhandle\b|hinge|ceiling|wall|skirting|baseboard|trim|panel|crack|odour|odor|smell|stench|ventilation|locker|shower|washroom|toilet|steam|\bac\b|hvac|air\s?con|app crash|login issue|website down/i;
+const POWERCYCLE_MONITOR_DAMAGE_PATTERN = /\b(?:cycle|power\s*cycle|powercycle|spin)\b.{0,48}\b(?:monitor|console|display|screen)\b|\b(?:monitor|console|display|screen)\b.{0,48}\b(?:crack|cracked|broken|damaged|not working|faulty)\b/i;
+
+const THEFT_OR_LOST_ITEM_PATTERN = /\b(theft|stolen|steal|robbed|missing cash|cash missing|money missing|money was missing|missing money|cash envelope|valuables? missing|personal items? missing|bag tampered|bag was open|locker tamper|locker break-?in|lost and found|left (?:her|his|their|my|a|the)?\s*(?:shoes?|gear|bag|bottle|phone|wallet|valuables?)|misplaced (?:shoes?|gear|bag|bottle|phone|wallet|valuables?))\b/i;
+
+function inferTheftOrLostItemSubCategory(lower: string): string | null {
+  if (!THEFT_OR_LOST_ITEM_PATTERN.test(lower)) return null;
+  if (/trainer|instructor|staff area|trainer area|employee area/.test(lower)) return 'Personal Items Taken from Trainer Area';
+  if (/locker|changing room|change room|locker room|shower area|cash envelope|missing cash|cash missing|money missing|missing money|bag tamper|bag was open|locker break/.test(lower)) return 'Locker Theft';
+  if (/lost and found|left .*shoes?|lost .*shoes?|shoes?|workout gear/.test(lower)) return 'Lost Shoes/Workout Gear';
+  if (/boutique|retail/.test(lower)) return 'Items Taken from Boutique';
+  if (/valet|parking/.test(lower)) return 'Issues with Valet Theft';
+  if (/left behind|misplaced|forgot|forgetting|lost\b/.test(lower)) return 'Misplaced Valuables';
+  if (/member|client|community/.test(lower)) return 'Stolen Personal Items';
+  return 'Reporting Stolen Items';
+}
 
 const STUDIO_ALIAS_PATTERNS: Array<[RegExp, string]> = [
   [/\b(?:bandra|supreme|supreme hq|hq)\b/i, 'Supreme HQ, Bandra'],
@@ -710,6 +725,10 @@ function getIssueProfileFieldIds(context: IntakeContext): string[] {
     return ['bikeSymptom', 'operationalImpact', 'currentWorkaround', 'resolutionRequirement'];
   }
 
+  if (POWERCYCLE_MONITOR_DAMAGE_PATTERN.test(issueText)) {
+    return ['equipmentSymptom', 'affectedArea', 'operationalImpact', 'currentWorkaround', 'resolutionRequirement'];
+  }
+
   const laundryMachineIssue = /washing|washer|laundry|dryer|machine/.test(issueText);
   if (laundryMachineIssue) {
     return ['machineSymptom', 'operationalImpact', 'currentWorkaround', 'resolutionRequirement'];
@@ -805,6 +824,7 @@ export function inferIntakeContextFromText(text: string, context: IntakeContext 
   }
 
   if (isMissingIntakeValue(context.category)) {
+    const theftOrLostItemSubCategory = inferTheftOrLostItemSubCategory(lower);
     if (/momence|crm|zoho|data accuracy|handover|sop|standard operating|process|workflow|payroll|performance review|finance|reconciliation|upi|marketing|campaign|collateral|partnership approval|internal operations|internal memo/.test(lower)) {
       inferred.category = 'Operating Systems';
       inferred.subCategory = /momence|crm|data/.test(lower) ? 'Momence Issues' : /payment|upi|reconciliation|finance/.test(lower) ? 'Payment Gateway Issue' : 'Technical Assistance';
@@ -814,6 +834,9 @@ export function inferIntakeContextFromText(text: string, context: IntakeContext 
     } else if (/billing|refund|payment|freeze|roll\s?over|extension|membership|package|renewal|expiry|credit|late cancellation|waiver|upgrade/.test(lower)) {
       inferred.category = 'Pricing and Memberships';
       inferred.subCategory = /freeze|pause/.test(lower) ? 'Membership Pause and Freeze Policy' : /refund|waiver/.test(lower) ? 'Refund and Cancellation Policy Issue' : /upgrade|downgrade/.test(lower) ? 'Membership Upgrade/Downgrade' : 'Class Pack Expiry Confusion';
+    } else if (theftOrLostItemSubCategory) {
+      inferred.category = 'Theft and Lost Items';
+      inferred.subCategory = theftOrLostItemSubCategory;
     } else if (/injury|safety|medical|harassment|security|theft|stolen|missing cash|cash envelope|unsafe|faint|cramp|conflict/.test(lower)) {
       inferred.category = 'Safety and Security';
       inferred.subCategory = /theft|stolen|missing cash|cash envelope/.test(lower) ? 'Theft Prevention Measures' : /harass|conflict/.test(lower) ? 'Harassment Reports' : 'Personal Safety Concerns';
@@ -825,6 +848,7 @@ export function inferIntakeContextFromText(text: string, context: IntakeContext 
       inferred.subCategory = HVAC_TEXT_PATTERN.test(lower) ? 'AC and HVAC Issues'
         : /light|bulb|fused|flickering/.test(lower) ? 'Lighting Issues'
         : /audio|speaker|mic|sound/.test(lower) ? 'Audio System Malfunction'
+        : POWERCYCLE_MONITOR_DAMAGE_PATTERN.test(lower) ? 'Broken Equipment'
         : /leak|plumbing|drain|flush|sewage|overflow|clog|pipe/.test(lower) ? 'Plumbing Leaks'
         : /pest|cockroach|rat|rodent|insect|ant/.test(lower) ? 'Pest Control Needed'
         : /\bdoor\b|\block\b|latch|hinge/.test(lower) ? 'Door Lock Issues'
@@ -1017,8 +1041,6 @@ export function getMissingIntakeFields(context: IntakeContext, options: MissingI
   if (!isPhysicalCategory) {
     add('description', shouldRequireFullIssueSummary(context, issueText) ? '' : context.description);
   }
-  add('resolutionRequired', context.resolutionRequired);
-
   return fields;
 }
 

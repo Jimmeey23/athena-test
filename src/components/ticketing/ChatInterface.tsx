@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Sparkles, CheckCircle2, Paperclip, X, Mic, Square, ChevronDown, Check, HelpCircle, ClipboardCheck, Gauge, GraduationCap, LayoutTemplate, Download, FileText, FileCode2, ImageDown, Copy } from 'lucide-react';
+import { Send, Sparkles, CheckCircle2, Paperclip, X, Mic, Square, ChevronDown, Check, HelpCircle, ClipboardCheck, Gauge, GraduationCap, LayoutTemplate, Download, FileText, FileCode2, ImageDown, Copy, Plus } from 'lucide-react';
 import { getErrorMessage } from '@/lib/error-formatting';
 import { TicketPreviewCard } from './TicketPreviewCard';
 import { ContextPicker, Context } from './ContextPicker';
@@ -253,6 +253,7 @@ function isAthenaDebugTraceEnabled(): boolean {
 
 const ATHENA_CHAT_RESPONSE_TIMEOUT_MS = 30_000;
 const ATHENA_CHAT_TIMEOUT_MESSAGE = 'Athena chat response timed out';
+const POWERCYCLE_MONITOR_DAMAGE_PATTERN = /\b(?:cycle|power\s*cycle|powercycle|spin)\b.{0,60}\b(?:monitor|console|display|screen)\b|\b(?:monitor|console|display|screen)\b.{0,60}\b(?:crack|cracked|broken|damaged|not working|faulty)\b/i;
 
 const GENERIC_REPLY_PATTERNS = [
   /^i need a few details before drafting this ticket/i,
@@ -280,60 +281,139 @@ function buildContextualReply({
   const prefix = reporterFirstName ? `${reporterFirstName}, ` : '';
   const { category, subCategory, priority, studio } = ctx;
 
-  const ackParts: string[] = [];
-  if (priority === 'Critical') ackParts.push('That sounds serious');
-  else if (priority === 'High') ackParts.push('Got it, this needs urgent attention');
-  else ackParts.push('Got it');
+  const CATEGORY_ACK: Record<string, string> = {
+    'Repair and Maintenance': 'On it — maintenance issues get escalated fast',
+    'Studio Amenities and Facilities': 'Got it — studio condition matters',
+    'Safety & Security': '⚠️ This needs immediate attention',
+    'Safety & Emergency': '⚠️ Flagging as urgent — safety issues are top priority',
+    'Trainer Feedback': 'Noted — trainer feedback is handled carefully',
+    'Class Experience': 'Understood — class quality issues are tracked closely',
+    'Scheduling': 'Got it — logging this with the scheduling team',
+    'Pricing and Memberships': 'Understood — routing this to the memberships team',
+    'Customer Service and Communication': 'Noted — escalating to the right person',
+    'Operating Systems': 'Got it — logging this for our tech team',
+    'Tech Issues': 'Got it — going to technical support',
+    'Hosted Class & Partnerships': 'Got it — logging under hosted class feedback',
+    'Member Feedback & Complaints': 'Understood — flagging this for the client servicing team',
+    'Billing & Refunds': 'Noted — routing to accounts for review',
+  };
 
-  if (subCategory && subCategory !== 'Other') ackParts.push(`— I've logged this as a **${subCategory}** issue`);
-  else if (category) ackParts.push(`— I've logged this under **${category}**`);
+  let ackText = '';
+  if (priority === 'Critical') {
+    ackText = '⚠️ Flagging this as critical';
+  } else if (priority === 'High') {
+    ackText = 'Got it — marking this as high priority';
+  } else if (category && CATEGORY_ACK[category]) {
+    ackText = CATEGORY_ACK[category];
+  } else {
+    ackText = 'Got it';
+  }
 
-  if (studio) ackParts.push(`at ${studio.split(',')[0]}`);
+  const specifics: string[] = [];
+  if (subCategory && subCategory !== 'Other') specifics.push(`**${subCategory}**`);
+  else if (category) specifics.push(`**${category}**`);
+  if (studio) specifics.push(`at ${studio.split(',')[0]}`);
 
-  const ack = ackParts.join(' ');
+  const ack = specifics.length ? `${ackText} — logging as ${specifics.join(' ')}` : ackText;
 
   const FIELD_QUESTIONS: Record<string, string> = {
-    incidentDateTime: 'when did this happen',
-    memberName: 'which member is involved',
-    studio: 'which studio did this happen at',
-    clientsAffected: 'were any clients affected',
-    securityRisk: 'what is the current security risk',
+    incidentDateTime: 'when exactly did this happen',
+    memberName: 'which member is affected',
+    studio: 'which studio did this occur at',
+    clientsAffected: 'were any clients directly affected',
+    securityRisk: 'what is the security risk right now',
     accessStatus: 'what is the current access situation',
-    lockFaultType: 'what is the fault with the lock or door',
-    hvacSymptom: 'what symptom is the AC/HVAC showing',
-    bikeSymptom: 'what issue is the bike showing',
-    affectedArea: 'which area inside the studio is affected',
-    operationalImpact: 'what is the current operational impact',
+    lockFaultType: 'what exactly is wrong with the lock or door',
+    hvacSymptom: 'what is the AC/HVAC doing',
+    bikeSymptom: 'what is the bike showing or doing',
+    affectedArea: 'which area inside the studio is this in',
+    operationalImpact: 'what is the operational impact right now',
     resolutionRequirement: 'what resolution or vendor action is needed',
-    currentWorkaround: 'is any workaround in place',
-    desiredResolution: 'what resolution did the member ask for',
+    currentWorkaround: 'is there any workaround currently in place',
+    desiredResolution: 'what resolution did the member request',
     memberSentiment: 'how did the member react',
-    freezeStartDate: 'when should the freeze start',
-    classImpactType: 'how was the class affected',
-    priority: 'what priority should this be',
+    freezeStartDate: 'when does the freeze need to start',
+    classImpactType: 'how was the class or session affected',
+    priority: 'what urgency level does this warrant',
+    trainer: 'which instructor was involved',
+    classType: 'which class or session type does this relate to',
+    classDateTime: 'when was this class scheduled',
+    minutesLate: 'how many minutes late did the instructor arrive',
+    advanceNoticeGiven: 'was any advance notice given',
+    lateReason: 'what was the reason for the late arrival',
+    memberReaction: 'how did members react — did anyone leave or complain',
+    serviceRecoveryNeeded: 'is any member-facing service recovery expected',
+    requestedOutcome: 'what outcome has been requested',
+    machineFaultType: 'what fault is the machine showing',
+    waterSource: 'where is the water coming from',
+    pestType: 'what kind of pest was reported',
+    doorFaultType: 'what is wrong with the door',
+    currentAccessSituation: 'what is the current access situation',
+    securityConcern: 'is there a security concern right now',
+    resolutionApproach: 'what resolution approach is expected',
+    door_fault_type: 'what is wrong with the door',
+    current_access_situation: 'what is the current access situation',
+    machine_symptom: 'what fault is the machine showing',
+    water_source: 'where is the water coming from',
+    resolution_approach: 'what resolution approach is expected',
+    security_concern: 'is there a security concern right now',
   };
 
   const questionLabels = formFields
     .slice(0, 3)
-    .map((field) => FIELD_QUESTIONS[field.id] || field.label.toLowerCase().replace(/\?$/, ''));
+    .map((field) => FIELD_QUESTIONS[field.id] || field.label.toLowerCase().replace(/\?$/, '').trim());
 
   let questionLine = '';
   if (questionLabels.length === 1) {
-    questionLine = `I just need one more detail: ${questionLabels[0]}.`;
+    questionLine = `Just one more thing — ${questionLabels[0]}?`;
   } else if (questionLabels.length === 2) {
-    questionLine = `A couple more details: ${questionLabels[0]}, and ${questionLabels[1]}.`;
+    questionLine = `Two quick details: ${questionLabels[0]}, and ${questionLabels[1]}.`;
   } else if (questionLabels.length > 2) {
     const last = questionLabels[questionLabels.length - 1];
     const rest = questionLabels.slice(0, -1).join(', ');
-    questionLine = `A few more details needed: ${rest}, and ${last}.`;
+    questionLine = `A few more details: ${rest}, and ${last}.`;
   }
 
   if (!ack && !questionLine) {
-    return `${prefix}Just a couple more details and we'll have a clean draft ready! 🙂`;
+    const fallbackType = subCategory && subCategory !== 'Other'
+      ? `**${subCategory}**`
+      : category
+        ? `**${category}**`
+        : 'this issue';
+    return `${prefix}I have a few details for ${fallbackType} — just need a couple more things to complete the draft.`;
   }
 
-  const parts = [isFirstTurn ? `${prefix}${ack}.` : ack + '.', questionLine].filter(Boolean);
+  const parts = [isFirstTurn ? `${prefix}${ack}.` : `${ack}.`, questionLine].filter(Boolean);
   return parts.join(' ');
+}
+
+function buildTicketReadyReply(ticket: DraftTicket | null | undefined, reporterFirstName?: string): string {
+  if (!ticket) return "I've drafted a ticket below. Review it and publish when ready.";
+
+  const name = reporterFirstName ? `${reporterFirstName}, ` : '';
+  const issueType = ticket.subCategory && ticket.subCategory !== 'Other'
+    ? ticket.subCategory
+    : ticket.category;
+  const studioShort = ticket.studio ? ticket.studio.split(',')[0] : null;
+  const memberFirst = ticket.memberName ? ticket.memberName.trim().split(' ')[0] : null;
+
+  if (ticket.priority === 'Critical') {
+    const where = studioShort ? ` at ${studioShort}` : '';
+    const who = memberFirst ? ` — ${memberFirst}` : '';
+    return `${name}Critical draft ready${who}${where}. Review and publish immediately to trigger escalation.`;
+  }
+  if (ticket.priority === 'High') {
+    const where = studioShort ? ` at ${studioShort}` : '';
+    const who = memberFirst ? ` for ${memberFirst}` : '';
+    return `${name}High-priority **${issueType}** draft${who}${where}. Look it over and publish when ready.`;
+  }
+  if (memberFirst) {
+    return `${name}Draft ready for ${memberFirst}'s **${issueType}** issue. Review below and publish to submit.`;
+  }
+  if (studioShort) {
+    return `${name}**${issueType}** ticket drafted for ${studioShort}. Take a look before publishing.`;
+  }
+  return `${name}**${issueType}** ticket drafted. Review below and publish when you're satisfied.`;
 }
 const ATHENA_AI_PROVIDER_LABELS: Record<string, string> = {
   claude: 'Claude Haiku',
@@ -844,6 +924,53 @@ function mergeInferredContext(ctx: DetailContext, inferred: Partial<DetailContex
   return next;
 }
 
+function normalizeEquipmentDamageContext(ctx: DetailContext, latestText = ''): DetailContext {
+  const issueText = [
+    latestText,
+    ctx.initialReport,
+    ctx.description,
+    ctx.category,
+    ctx.subCategory,
+    ctx.affectedArea,
+  ].filter(Boolean).join(' ');
+  if (!POWERCYCLE_MONITOR_DAMAGE_PATTERN.test(issueText)) return ctx;
+
+  return {
+    ...ctx,
+    category: 'Repair and Maintenance',
+    subCategory: 'Broken Equipment',
+  };
+}
+
+function buildEquipmentDamageGuardForm(ctx: DetailContext, latestText = ''): DetailForm | null {
+  const issueText = [
+    latestText,
+    ctx.initialReport,
+    ctx.description,
+    ctx.category,
+    ctx.subCategory,
+    ctx.affectedArea,
+  ].filter(Boolean).join(' ');
+  if (!POWERCYCLE_MONITOR_DAMAGE_PATTERN.test(issueText)) return null;
+  if (ctx.category !== 'Repair and Maintenance' || ctx.subCategory !== 'Broken Equipment') return null;
+  if (!isMissingIntakeValue(ctx.affectedArea)) return null;
+
+  return {
+    title: 'Identify the affected equipment',
+    description: 'This prevents a vague maintenance draft and helps the owner locate the damaged PowerCycle monitor quickly.',
+    fields: [
+      {
+        id: 'affectedArea',
+        label: 'Which bike, monitor, or exact PowerCycle area is affected?',
+        type: 'text',
+        required: true,
+        placeholder: 'Example: Bike 4, front row monitor, PowerCycle studio',
+      },
+    ],
+    submitLabel: 'Continue',
+  };
+}
+
 function fieldHasContextValue(field: DetailFormField, ctx: DetailContext): boolean {
   const value = ctx[field.id];
   const hasAnyIntakeValue = (...values: unknown[]) => values.some((candidate) => !isMissingIntakeValue(candidate));
@@ -865,8 +992,9 @@ function filterAiDetailForm(form: DetailForm | null, ctx: DetailContext, require
   if (!form) return null;
   // AI drives the intake. Keep its contextual questions instead of filtering them
   // through local deterministic guard rules.
+  const SUPPRESSED_FIELD_IDS = new Set(['reportedBy', 'resolutionRequired', 'resolution_required']);
   const fields = form.fields.map((field) => {
-    if (field.id === 'reportedBy') return false;
+    if (SUPPRESSED_FIELD_IDS.has(field.id)) return false;
     return requiredFields.has(field.id) ? { ...field, required: true } : field;
   }).filter(Boolean) as DetailFormField[];
 
@@ -1117,7 +1245,9 @@ function buildClientDraft(ctx: DetailContext, text: string): DraftTicket {
   const sourceText = ctx.initialReport || ctx.description || text;
   const normalizedContext = normalizeDraftContextForSource(ctx, sourceText) as DetailContext;
   const category = normalizedContext.category || 'General Feedback';
-  const subCategory = normalizedContext.subCategory || 'Other';
+  const subCategory = POWERCYCLE_MONITOR_DAMAGE_PATTERN.test(sourceText)
+    ? 'Broken Equipment'
+    : normalizedContext.subCategory || 'Other';
   const includeMemberContext = shouldCarryMemberContext(sourceText, normalizedContext);
   const includeSessionContext = shouldCarrySessionContext(sourceText, normalizedContext);
   const description = buildOperationalTicketDescription({
@@ -1134,7 +1264,7 @@ function buildClientDraft(ctx: DetailContext, text: string): DraftTicket {
     category,
     subCategory,
     priority: (normalizedContext.priority as DraftTicket['priority']) || 'Medium',
-    studio: normalizedContext.studio || 'Unspecified Studio',
+    studio: normalizedContext.studio || '',
     trainer: includeSessionContext ? normalizedContext.trainer || null : null,
     classType: includeSessionContext ? normalizedContext.classType || null : null,
     classDateTime: includeSessionContext ? normalizedContext.classDateTime || null : null,
@@ -1154,7 +1284,9 @@ function buildClientDraft(ctx: DetailContext, text: string): DraftTicket {
 function normalizeDraftForReview(draft: DraftTicket, ctx: DetailContext, text: string): DraftTicket {
   const sourceText = ctx.initialReport || ctx.description || text || draft.conversationSummary || draft.description;
   const category = draft.category || ctx.category || 'General Feedback';
-  const subCategory = draft.subCategory || ctx.subCategory || 'Other';
+  const subCategory = category === 'Repair and Maintenance' && POWERCYCLE_MONITOR_DAMAGE_PATTERN.test(sourceText)
+    ? 'Broken Equipment'
+    : draft.subCategory || ctx.subCategory || 'Other';
   const normalizedContext = normalizeDraftContextForSource({
     ...ctx,
     intakeRoute: ctx.intakeRoute,
@@ -1185,7 +1317,7 @@ function normalizeDraftForReview(draft: DraftTicket, ctx: DetailContext, text: s
     description,
     category,
     subCategory,
-    studio: normalizedContext.studio || draft.studio || 'Unspecified Studio',
+    studio: normalizedContext.studio || draft.studio || '',
     trainer: includeSessionContext ? normalizedContext.trainer || draft.trainer || null : null,
     classType: includeSessionContext ? normalizedContext.classType || draft.classType || null : null,
     classDateTime: includeSessionContext ? normalizedContext.classDateTime || draft.classDateTime || null : null,
@@ -1272,7 +1404,17 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
   const [voiceLiveText, setVoiceLiveText] = useState('');
   const [voiceHint, setVoiceHint] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [, setChatHistory] = useState<Array<{id: string; timestamp: number; title: string; category?: string; messageCount: number}>>(() => {
+    try {
+      const key = `athena-chat-history-${reporterName || 'anonymous'}`;
+      const stored = localStorage.getItem(key);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const [activeDraftReviewMessageId, setActiveDraftReviewMessageId] = useState<string | null>(null);
+  const [draftReviewModalOpen, setDraftReviewModalOpen] = useState(false);
   const [instructorEvaluationMode, setInstructorEvaluationMode] = useState(false);
   const [textToTicketOpen, setTextToTicketOpen] = useState(false);
   const [textToTicketText, setTextToTicketText] = useState('');
@@ -1310,18 +1452,39 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
   }, [input]);
   const capturedContextSummary = useMemo(() => {
     const items: string[] = [];
-    if (context.studio) items.push(`📍 ${context.studio.split(',')[0]}`);
-    if (context.category) items.push(`🏷 ${context.category}`);
-    if (context.subCategory) items.push(`• ${context.subCategory}`);
-    if (context.memberName) items.push(`👤 ${context.memberName}`);
-    if (context.priority) items.push(`⚡ ${context.priority}`);
-    if (context.classType) items.push(`🏋️ ${context.classType}`);
+    if (context.studio) items.push(`Studio: ${context.studio.split(',')[0]}`);
+    if (context.category) items.push(`Route: ${context.category}`);
+    if (context.subCategory) items.push(`Type: ${context.subCategory}`);
+    if (context.memberName) items.push(`Member: ${context.memberName}`);
+    if (context.priority) items.push(`Priority: ${context.priority}`);
+    if (context.classType) items.push(`Session: ${context.classType}`);
     return items;
   }, [context]);
   const activeDraftReviewMessage = useMemo(
     () => messages.find((message) => message.id === activeDraftReviewMessageId && message.ticket) || null,
     [activeDraftReviewMessageId, messages]
   );
+
+  const contextInterimDraft = useMemo(() => {
+    if (activeDraftReviewMessage?.ticket) return null;
+    if (!context.category) return null;
+    return {
+      category: context.category,
+      subCategory: context.subCategory || 'Other',
+      priority: (context.priority as 'Critical' | 'High' | 'Medium' | 'Low') || 'Medium',
+      studio: context.studio || '',
+      memberName: context.memberName || null,
+      trainer: context.trainer || null,
+      classType: context.classType || null,
+      intakeRoute: context.intakeRoute || null,
+    };
+  }, [activeDraftReviewMessage, context]);
+
+  const sidebarStatusLabel = activeDraftReviewMessage?.ticket
+    ? 'Draft review'
+    : contextInterimDraft
+      ? 'Capturing context'
+      : 'Ready for intake';
 
   const addExportError = useCallback((format: string, error: unknown) => {
     const message = getDisplayError(error, `Could not export ${format}`);
@@ -1731,6 +1894,12 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
 
       const inferredContext = normalizeInferredContext(data?.inferredContext);
       let responseContext = mergeInferredContext(activeContext, inferredContext, data?.urgencyReason);
+      const equipmentGuardSource = [
+        text,
+        data?.ticket?.title,
+        data?.ticket?.description,
+      ].filter(Boolean).join('\n');
+      responseContext = normalizeEquipmentDamageContext(responseContext, equipmentGuardSource);
       // Always sync context after every AI response — not just when inferredContext has keys.
       // This ensures entity fields (studio, trainer, etc.) the AI inferred are persisted for the next turn.
       responseContext = { ...responseContext, reportedBy: reporterName };
@@ -1740,7 +1909,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
       const normalizedAiTicket = data?.ticket ? normalizeDraftForReview(data.ticket, responseContext, text) : null;
       const remainingMissingFields: string[] = [];
       const requiredFieldSet = new Set(remainingMissingFields);
-      const deterministicForm = null;
+      const deterministicForm = buildEquipmentDamageGuardForm(responseContext, equipmentGuardSource);
       const acceptsAiDetailForm = shouldAcceptAiDetailForm({
         remainingMissingFieldCount: remainingMissingFields.length,
         aiNeedsMoreInfo: data?.needsMoreInfo,
@@ -1796,22 +1965,23 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
       );
       const isFirstUserTurn = messages.filter((m) => m.role === 'user').length <= 1;
       const effectiveReply = isGenericReply(data?.reply) ? null : data?.reply;
+      const deterministicGuardActive = Boolean(deterministicForm);
       const assistantContent = singleField
-        ? (effectiveReply || buildNaturalSingleFieldPrompt({
+        ? ((!deterministicGuardActive && effectiveReply) || buildNaturalSingleFieldPrompt({
             field: singleField,
             reporterFirstName,
           }))
         : finalDetailForm
-          ? (effectiveReply || buildContextualReply({
+          ? ((!deterministicGuardActive && effectiveReply) || buildContextualReply({
               ctx: responseContext,
               formFields: finalDetailForm.fields,
               reporterFirstName,
               isFirstTurn: isFirstUserTurn,
             }))
           : ticket
-            ? (effectiveReply || "Looks good — I've drafted the ticket below. Take a quick look before publishing.")
-            : data?.reply || "Hmm, I didn't quite catch that. Could you tell me a bit more?";
-      setPendingSingleField(null);
+            ? (effectiveReply || buildTicketReadyReply(ticket, reporterFirstName))
+            : data?.reply || `${reporterFirstName ? `${reporterFirstName}, c` : 'C'}ould you share a bit more detail? I want to make sure this gets to the right person.`;
+      setPendingSingleField(singleField && !renderSingleFieldAsChat ? singleField : null);
       await sleep(writingPauseMs(assistantContent));
       if (requestEpoch !== activeChatEpochRef.current || requestNonce !== requestNonceRef.current) return;
       const assistantMsg: Message = {
@@ -1821,7 +1991,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         content: assistantContent,
         ticket,
         suggestedChips: singleFieldChips,
-        detailForm: renderSingleFieldAsChat ? null : finalDetailForm,
+        detailForm: null,
         published: false,
         ticketId: undefined,
       };
@@ -1831,6 +2001,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
       ]);
       if (ticket) {
         setActiveDraftReviewMessageId(assistantMsg.id);
+        setDraftReviewModalOpen(true);
       }
 
     } catch (e: unknown) {
@@ -1857,8 +2028,8 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         const fallbackContent = singleField
           ? buildNaturalSingleFieldPrompt({ field: singleField, reporterFirstName })
           : timeoutForm
-            ? `${reporterFirstName ? `${reporterFirstName}, ` : ''}I’m taking a little longer than usual — continuing locally so you don’t lose momentum.`
-            : 'I’m taking a little longer than usual, so I’ve prepared a local draft for you to review.';
+            ? (reporterFirstName ? `${reporterFirstName}, taking a little longer than usual — continuing locally so you don’t lose momentum.` : "Taking a little longer than usual — continuing locally so you don’t lose momentum.")
+            : buildTicketReadyReply(fallbackTicket, reporterFirstName);
 
         setPendingSingleField(null);
         const fallbackMessage: Message = {
@@ -1868,11 +2039,14 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
           content: fallbackContent,
           ticket: fallbackTicket,
           suggestedChips: singleFieldChips,
-          detailForm: renderSingleFieldAsChat ? null : timeoutForm,
+          detailForm: null,
           published: false,
         };
         setMessages((prev) => [...prev, fallbackMessage]);
-        if (fallbackTicket) setActiveDraftReviewMessageId(fallbackMessage.id);
+        if (fallbackTicket) {
+          setActiveDraftReviewMessageId(fallbackMessage.id);
+          setDraftReviewModalOpen(true);
+        }
         return;
       }
       setMessages((prev) => [
@@ -1910,6 +2084,31 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
   };
 
   const resetChat = useCallback(() => {
+    // Save current session to history before resetting
+    setMessages((currentMessages) => {
+      const userMessages = currentMessages.filter((m) => m.role === 'user');
+      if (userMessages.length > 0) {
+        const title = userMessages[0].content.slice(0, 80);
+        const entry = {
+          id: conversationId || `session-${Date.now()}`,
+          timestamp: Date.now(),
+          title,
+          category: context.category,
+          messageCount: currentMessages.length,
+        };
+        setChatHistory((prev) => {
+          const updated = [entry, ...prev.filter((h) => h.id !== entry.id)].slice(0, 10);
+          try {
+            const key = `athena-chat-history-${reporterName || 'anonymous'}`;
+            localStorage.setItem(key, JSON.stringify(updated));
+          } catch {
+            // localStorage can fail in private browsing or restricted browser contexts.
+          }
+          return updated;
+        });
+      }
+      return currentMessages;
+    });
     activeChatEpochRef.current += 1;
     requestNonceRef.current += 1;
     voiceSessionActiveRef.current = false;
@@ -1925,11 +2124,12 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
     setPendingAttachments([]);
     setConversationId(null);
     setActiveDraftReviewMessageId(null);
+    setDraftReviewModalOpen(false);
     shownRelatedTicketNoticeKeysRef.current.clear();
     setInstructorEvaluationMode(false);
     setActiveTemplate(null);
     setLoading(false);
-  }, [reporterName]);
+  }, [reporterName, conversationId, context.category]);
 
   useEffect(() => {
     if (resetVersion === lastResetVersionRef.current) return;
@@ -2003,6 +2203,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
       ]);
       setPendingAttachments([]);
       setActiveDraftReviewMessageId(null);
+      setDraftReviewModalOpen(false);
     } catch (e: unknown) {
       const message = getDisplayError(e, 'Ticket creation failed');
       setMessages((prev) => [
@@ -2045,6 +2246,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
 
   const discardDraft = (messageId: string) => {
     setActiveDraftReviewMessageId((current) => current === messageId ? null : current);
+    setDraftReviewModalOpen(false);
     setMessages((prev) =>
       prev.map((message) => (
         message.id === messageId
@@ -2086,6 +2288,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
       reportedBy: reporterName,
     }));
     setActiveDraftReviewMessageId(messageId);
+    setDraftReviewModalOpen(true);
   };
 
   const submitInstructorEvaluation = async (evaluation: TrainerEvaluationInput) => {
@@ -2155,6 +2358,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
           },
         ]);
         setActiveDraftReviewMessageId(messageId);
+        setDraftReviewModalOpen(true);
       }
       setTextToTicketText('');
       setTextToTicketOpen(false);
@@ -2182,6 +2386,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
           },
         ]);
         setActiveDraftReviewMessageId(messageId);
+        setDraftReviewModalOpen(true);
       }
     } finally {
       setLoading(false);
@@ -2189,77 +2394,197 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
   };
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-slate-200/60 font-['Plus_Jakarta_Sans',Inter,sans-serif]">
-      <div className="hidden h-full w-[32%] shrink-0 flex-col border-r border-slate-200 bg-slate-50 lg:flex 2xl:w-[26%]">
-        {/* Athena mode toggle */}
-        <div className="shrink-0 border-b border-slate-100 p-3">
-          <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-            <div className="min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Athena mode</div>
-              <div className="truncate text-xs font-semibold text-blue-950">
-                {instructorEvaluationMode ? 'Instructor evaluation' : 'Ticket intake'}
+    <div className="flex h-full w-full overflow-hidden bg-slate-100 font-['Plus_Jakarta_Sans',Inter,sans-serif]">
+      <div className="hidden h-full w-[30%] max-w-[420px] shrink-0 flex-col border-r border-slate-200 bg-white text-slate-950 lg:flex 2xl:w-[24%]">
+        <div className="relative shrink-0 overflow-hidden border-b border-slate-200 px-4 py-4">
+          <div className="relative animate-sidebar-panel-in rounded-3xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-p57-soft-pulse" />
+                  Online
+                </div>
+                <h2 className="text-xl font-black tracking-tight text-slate-950">Athena</h2>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  Clean ticket intake for member feedback and operations issues.
+                </p>
               </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={instructorEvaluationMode}
-              onClick={() => setInstructorEvaluationMode((current) => !current)}
-              className={`relative h-7 w-12 rounded-full border transition ${
-                instructorEvaluationMode
-                  ? 'border-blue-500 bg-blue-600'
-                  : 'border-blue-200 bg-blue-100'
-              }`}
-              title="Toggle instructor evaluation mode"
-            >
-              <span
-                className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition ${
-                  instructorEvaluationMode ? 'left-6' : 'left-1'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* Live ticket preview */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {activeDraftReviewMessage?.ticket ? (
-            <div className="p-3">
-              <div className="mb-2 flex items-center gap-1.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.7)]" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Live draft</span>
-              </div>
-              <DraftTicketReviewPreview
-                draft={mergeDraftWithContext(activeDraftReviewMessage.ticket, context)}
-                context={context}
-                tickets={tickets}
-                onConfirm={() => onConfirmDraftFromMessage(activeDraftReviewMessage)}
-                onEdit={() => refineDraft()}
-                onDiscard={() => discardDraft(activeDraftReviewMessage.id)}
-                onSaveEdit={(draft) => saveEditedDraft(activeDraftReviewMessage.id, draft)}
-                confirmed={activeDraftReviewMessage.published}
-                ticketId={activeDraftReviewMessage.ticketId}
-                confirmedTicket={activeDraftReviewMessage.publishedTicket}
-                publishing={publishingRef.current.has(activeDraftReviewMessage.id)}
-              />
-            </div>
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-blue-300/80 bg-gradient-to-br from-blue-100 to-indigo-100 shadow-[0_4px_14px_rgba(79,70,229,0.18)]">
                 <img
                   src="/download-1.png"
                   alt="Athena"
-                  className="-scale-x-100 h-10 w-10 object-contain opacity-60"
-                  style={{ filter: 'hue-rotate(225deg) saturate(1.4) contrast(1.08)' }}
+                  className="-scale-x-100 h-10 w-10 rounded-full object-cover"
+                  style={{ filter: 'hue-rotate(225deg) saturate(1.45) contrast(1.08)' }}
                 />
               </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-700">No draft yet</p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-400">Describe an issue in the chat and Athena will draft a ticket here.</p>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-2">
+              <div className="mb-2 flex items-center justify-between px-1">
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Mode</span>
+                <span className="text-[10px] font-semibold text-slate-500">{sidebarStatusLabel}</span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={instructorEvaluationMode}
+                onClick={() => setInstructorEvaluationMode((current) => !current)}
+                className="group relative grid h-11 w-full grid-cols-2 rounded-2xl border border-slate-200 bg-slate-100 p-1 text-xs font-bold transition"
+                title="Toggle instructor evaluation mode"
+              >
+                <span
+                  className={`absolute top-1 h-9 w-[calc(50%-0.25rem)] rounded-xl bg-white shadow-sm transition ${
+                    instructorEvaluationMode ? 'left-[calc(50%)]' : 'left-1'
+                  }`}
+                />
+                <span className={`relative z-10 flex items-center justify-center gap-1.5 rounded-xl transition ${!instructorEvaluationMode ? 'text-slate-950' : 'text-slate-500 group-hover:text-slate-700'}`}>
+                  <ClipboardCheck className="h-3.5 w-3.5" />
+                  Ticket intake
+                </span>
+                <span className={`relative z-10 flex items-center justify-center gap-1.5 rounded-xl transition ${instructorEvaluationMode ? 'text-slate-950' : 'text-slate-500 group-hover:text-slate-700'}`}>
+                  <GraduationCap className="h-3.5 w-3.5" />
+                  Instructor
+                </span>
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={resetChat}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-xs font-bold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setTextToTicketOpen(true)}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-950 text-xs font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Text ticket
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="chat-scrollbar min-h-0 flex-1 overflow-y-auto bg-white px-4 py-4">
+          {activeDraftReviewMessage?.ticket ? (
+            <div className="animate-sidebar-panel-in">
+              <button
+                type="button"
+                onClick={() => setDraftReviewModalOpen(true)}
+                className="w-full rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-sm">
+                    <ClipboardCheck className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-extrabold text-slate-950">Draft ready</span>
+                    <span className="mt-1 block truncate text-xs font-medium text-slate-600">
+                      {activeDraftReviewMessage.ticket.title}
+                    </span>
+                    <span className="mt-3 inline-flex rounded-full bg-white px-3 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">
+                      Open review modal
+                    </span>
+                  </span>
+                </div>
+              </button>
+            </div>
+          ) : contextInterimDraft ? (
+            <div className="animate-sidebar-panel-in">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex h-5 w-5 items-center justify-center">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-slate-400 opacity-25" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-slate-700" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Capturing</span>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-bold text-slate-500">In progress</span>
+              </div>
+              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 shadow-sm">
+                <div className={`h-[3px] w-full ${
+                  contextInterimDraft.priority === 'Critical' ? 'bg-gradient-to-r from-red-500 via-rose-500 to-red-600' :
+                  contextInterimDraft.priority === 'High' ? 'bg-gradient-to-r from-orange-400 via-amber-400 to-orange-500' :
+                  contextInterimDraft.priority === 'Medium' ? 'bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600' :
+                  'bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500'
+                }`} />
+                <div className="p-3.5 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1 text-[11px]">
+                      <span className="rounded-md bg-white px-2 py-0.5 font-medium text-slate-700 ring-1 ring-slate-200">{contextInterimDraft.category}</span>
+                      {contextInterimDraft.subCategory !== 'Other' && (
+                        <>
+                          <span className="text-slate-500">›</span>
+                          <span className="rounded-md bg-slate-900 px-2 py-0.5 font-semibold text-white">{contextInterimDraft.subCategory}</span>
+                        </>
+                      )}
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                      contextInterimDraft.priority === 'Critical' ? 'bg-red-50 text-red-600 ring-1 ring-red-200' :
+                      contextInterimDraft.priority === 'High' ? 'bg-orange-50 text-orange-600 ring-1 ring-orange-200' :
+                      contextInterimDraft.priority === 'Medium' ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200' :
+                      'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200'
+                    }`}>{contextInterimDraft.priority}</span>
+                  </div>
+                  <div className="space-y-1.5 text-[11px]">
+                    {contextInterimDraft.studio && (
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <span className="shrink-0 w-16 font-semibold text-slate-500">Studio</span>
+                        <span className="font-medium text-slate-800">{contextInterimDraft.studio.split(',')[0]}</span>
+                      </div>
+                    )}
+                    {contextInterimDraft.memberName && (
+                      <div className="flex items-center gap-2">
+                        <span className="shrink-0 w-16 font-semibold text-slate-500">Member</span>
+                        <span className="font-semibold text-slate-800">{contextInterimDraft.memberName}</span>
+                      </div>
+                    )}
+                    {contextInterimDraft.trainer && (
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <span className="shrink-0 w-16 font-semibold text-slate-500">Trainer</span>
+                        <span className="font-medium text-slate-800">{contextInterimDraft.trainer}</span>
+                      </div>
+                    )}
+                    {contextInterimDraft.classType && (
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <span className="shrink-0 w-16 font-semibold text-slate-500">Session</span>
+                        <span className="font-medium text-slate-800">{contextInterimDraft.classType}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2.5 py-2">
+                    <div className="flex gap-0.5">
+                      {[0, 1, 2].map((i) => (
+                        <span key={i} className="inline-block h-1.5 w-1.5 rounded-full bg-slate-500 animate-bounce" style={{ animationDelay: `${i * 120}ms` }} />
+                      ))}
+                    </div>
+                    <span className="text-[10px] font-semibold text-slate-600">Gathering remaining details</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="animate-sidebar-panel-in space-y-4">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700">
+                    <Gauge className="h-5 w-5 animate-p57-float" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-extrabold text-slate-950">No active draft</p>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                      Start with a member concern, operational issue, or pasted notes. Athena will hold the draft until the route is specific enough.
+                    </p>
+                  </div>
+                </div>
               </div>
               {recentTickets.length > 0 && (
-                <div className="mt-4 w-full text-left">
-                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Recent tickets</div>
+                <div className="w-full text-left">
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Recent tickets</div>
                   <div className="flex flex-wrap gap-1.5">
                     {recentTickets.map((ticket, index) => {
                       const compactLabel = ticket.title.length > 36
@@ -2271,9 +2596,9 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
                           type="button"
                           onClick={() => {
                             setSelectedTicket(ticket);
-                            onOpenExistingTicket?.(ticket);
-                          }}
-                          className="animate-ticket-chip-in max-w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-slate-900"
+                          onOpenExistingTicket?.(ticket);
+                        }}
+                          className="animate-ticket-chip-in max-w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
                           style={{ animationDelay: `${index * 90}ms` }}
                           title={`${ticket.id} - ${ticket.title}`}
                         >
@@ -2289,8 +2614,8 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         </div>
       </div>
 
-      <div className="relative z-10 flex h-full min-w-0 flex-1 flex-col bg-background">
-        <div className="animate-chat-header-in flex items-center justify-between border-b border-blue-100/80 bg-gradient-to-r from-white via-blue-50/40 to-indigo-50/30 px-4 py-2.5 shadow-[0_1px_8px_rgba(15,23,42,0.06)]">
+      <div className="relative z-10 flex h-full min-w-0 flex-1 flex-col bg-slate-50/90">
+        <div className="animate-chat-header-in flex items-center justify-between border-b border-slate-200/80 bg-white/88 px-4 py-3 shadow-[0_14px_38px_rgba(15,23,42,0.08)] backdrop-blur-2xl">
           <div className="flex min-w-0 items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-blue-300/80 bg-gradient-to-br from-blue-100 to-indigo-100 shadow-[0_4px_14px_rgba(79,70,229,0.18)]">
               <img
@@ -2302,22 +2627,39 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="truncate text-lg font-semibold text-slate-950">Athena</h1>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 shadow-sm">
+                <h1 className="truncate text-lg font-black tracking-tight text-slate-950">Athena</h1>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700 shadow-sm">
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   </span>
                   Online
                 </span>
-                <span className="hidden rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600 sm:inline-flex">
+                <span className="hidden rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 sm:inline-flex">
                   {providerBadgeLabel}
                 </span>
               </div>
-              <p className="truncate text-xs text-slate-500">Your AI ops assistant · Physique 57 India</p>
+              <p className="truncate text-xs font-medium text-slate-500">AI operations desk for Physique 57 India</p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <TemplatePicker onSelect={applyTemplate} />
+            <button
+              type="button"
+              onClick={() => setTextToTicketOpen(true)}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-2xl border border-cyan-200 bg-cyan-50 px-3 text-xs font-bold text-cyan-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-100"
+            >
+              <ClipboardCheck className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Text to ticket</span>
+            </button>
+            <button
+              type="button"
+              onClick={resetChat}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">New chat</span>
+            </button>
             <ChatExportMenu
               disabled={messages.length === 0 || Boolean(exportingFormat)}
               exportingPng={exportingFormat === 'png'}
@@ -2331,7 +2673,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         </div>
 
         {instructorEvaluationMode ? (
-          <div className="chat-scrollbar flex-1 overflow-y-auto bg-blue-50/60 px-4 py-4 shadow-inner sm:px-6">
+          <div className="chat-scrollbar flex-1 overflow-y-auto bg-slate-100/80 px-4 py-4 shadow-inner sm:px-6">
             <div className="mx-auto flex min-h-full max-w-7xl items-stretch">
               <InstructorEvaluationChatbox
                 onSubmit={submitInstructorEvaluation}
@@ -2342,10 +2684,10 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         ) : (
           <div
             ref={scrollRef}
-            className="chat-scrollbar mx-auto w-full max-w-7xl flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 lg:py-5"
+            className="chat-scrollbar mx-auto w-full max-w-7xl flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6 lg:py-6"
             style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg width='180' height='180' viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Ctext x='24' y='42' font-size='11' font-family='Inter,Arial,sans-serif' fill='%231e293b' fill-opacity='0.05'%3EP57%3C/text%3E%3Ccircle cx='124' cy='54' r='9' stroke='%231e293b' stroke-opacity='0.045' stroke-width='1.2'/%3E%3Cpath d='M35 122h22M46 111v22' stroke='%231e293b' stroke-opacity='0.045' stroke-width='1.8' stroke-linecap='round'/%3E%3C/g%3E%3C/svg%3E")`,
-              backgroundColor: '#f3f4f6',
+              backgroundImage: `radial-gradient(circle at 18% 8%, rgba(14,165,233,0.10), transparent 28%), radial-gradient(circle at 88% 12%, rgba(16,185,129,0.08), transparent 24%), url("data:image/svg+xml,%3Csvg width='180' height='180' viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Ctext x='24' y='42' font-size='11' font-family='Inter,Arial,sans-serif' fill='%231e293b' fill-opacity='0.045'%3EP57%3C/text%3E%3Ccircle cx='124' cy='54' r='9' stroke='%231e293b' stroke-opacity='0.04' stroke-width='1.2'/%3E%3Cpath d='M35 122h22M46 111v22' stroke='%231e293b' stroke-opacity='0.04' stroke-width='1.8' stroke-linecap='round'/%3E%3C/g%3E%3C/svg%3E")`,
+              backgroundColor: '#f8fafc',
             }}
           >
             {messages.map((m, index) => (
@@ -2355,7 +2697,10 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
                 index={index}
                 onChipClick={handleChipClick}
                 onDetailFormSubmit={submitDetailForm}
-                onOpenDraftReview={(messageId) => setActiveDraftReviewMessageId(messageId)}
+                onOpenDraftReview={(messageId) => {
+                  setActiveDraftReviewMessageId(messageId);
+                  setDraftReviewModalOpen(true);
+                }}
                 context={context}
                 showDebugTrace={athenaDebugTraceEnabled}
               />
@@ -2365,12 +2710,17 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
                 <p className="text-[11px] font-medium text-slate-400">Not sure how to start? Try one of these:</p>
                 <div className="flex flex-wrap gap-2">
                   {[
-                    'A member complained about the AC at Bandra studio',
+                    'AC is not cooling at the Bandra studio - member complained',
                     'Member Smita Modi wants a refund for her last class',
-                    'Member Preeti Ambani reported money theft from the locker room at Kemps',
-                    'Equipment issue - Cycle monitor not working at the Bandra Studio',
-                    'Instructor arrived late for the barre class',
-                  ].map((starter) => (
+                    'Money stolen from locker room at Kemps Corner',
+                    'Cycle monitor not working at Bandra studio',
+                    'Instructor arrived 15 minutes late for the 7am barre class',
+                    'Member complained about bad odour in the changeroom',
+                    'App keeps crashing when trying to book a class',
+                    'Trainer was rough and discouraging during class',
+                    'Steam room not working at Lower Parel',
+                    'Member wants to freeze their membership for 2 months',
+                  ].slice(0, 5 + Math.floor(Date.now() / 86400000) % 3).map((starter) => (
                     <button
                       key={starter}
                       type="button"
@@ -2386,6 +2736,41 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
             {loading && <TypingIndicator />}
           </div>
         )}
+
+        <Dialog
+          open={!instructorEvaluationMode && draftReviewModalOpen && Boolean(activeDraftReviewMessage?.ticket)}
+          onOpenChange={(open) => {
+            setDraftReviewModalOpen(open);
+          }}
+        >
+          <DialogContent className="fixed left-[50%] top-[50%] z-[100] flex max-h-[92vh] !w-[min(920px,calc(100vw-2rem))] !max-w-[min(920px,calc(100vw-2rem))] translate-x-[-50%] translate-y-[-50%] flex-col overflow-hidden rounded-3xl border-slate-200 bg-slate-50 p-0 shadow-[0_30px_100px_rgba(15,23,42,0.30)]">
+            {activeDraftReviewMessage?.ticket && (
+              <>
+                <DialogHeader className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 pr-12 text-left">
+                  <DialogTitle className="text-base text-slate-950">Review ticket draft</DialogTitle>
+                  <DialogDescription>
+                    Confirm the route, priority, owner context, and resolution steps before publishing.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="chat-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
+                  <DraftTicketReviewPreview
+                    draft={mergeDraftWithContext(activeDraftReviewMessage.ticket, context)}
+                    context={context}
+                    tickets={tickets}
+                    onConfirm={() => onConfirmDraftFromMessage(activeDraftReviewMessage)}
+                    onEdit={() => refineDraft()}
+                    onDiscard={() => discardDraft(activeDraftReviewMessage.id)}
+                    onSaveEdit={(draft) => saveEditedDraft(activeDraftReviewMessage.id, draft)}
+                    confirmed={activeDraftReviewMessage.published}
+                    ticketId={activeDraftReviewMessage.ticketId}
+                    confirmedTicket={activeDraftReviewMessage.publishedTicket}
+                    publishing={publishingRef.current.has(activeDraftReviewMessage.id)}
+                  />
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={textToTicketOpen} onOpenChange={setTextToTicketOpen}>
           <DialogContent className="max-w-2xl border-slate-200 bg-white p-5 shadow-[0_30px_100px_rgba(15,23,42,0.25)] sm:rounded-3xl">
@@ -2492,10 +2877,10 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
 
         {!instructorEvaluationMode && (
         <>
-        <div className="z-10 flex-shrink-0 border-t border-border/50 bg-[#f0f2f5] px-4 py-2.5 shadow-[0_-12px_30px_rgba(15,23,42,0.04)] sm:px-6">
-        <div className="mx-auto flex w-full max-w-7xl items-center gap-3 rounded-xl border border-slate-200 bg-white/80 px-3 py-2.5 shadow-[0_10px_28px_rgba(15,23,42,0.06)]">
+        <div className="z-10 flex-shrink-0 border-t border-slate-200/80 bg-white/76 px-4 py-2.5 shadow-[0_-12px_30px_rgba(15,23,42,0.04)] backdrop-blur-2xl sm:px-6">
+        <div className="mx-auto flex w-full max-w-7xl items-center gap-3 rounded-2xl border border-slate-200 bg-white/88 px-3 py-2.5 shadow-[0_10px_28px_rgba(15,23,42,0.06)]">
             <div className="flex shrink-0 items-center gap-3">
-              <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-700">
+              <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-700">
                 Context
               </span>
               <div className="hidden h-5 w-px bg-slate-200 sm:block" />
@@ -2508,27 +2893,16 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
                 onChange={(next) => setContext((current) => ({ ...current, ...next }))}
               />
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <TemplatePicker onSelect={applyTemplate} />
-              <button
-                type="button"
-                onClick={() => setTextToTicketOpen(true)}
-                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100"
-              >
-                <ClipboardCheck className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Text to ticket</span>
-              </button>
-            </div>
           </div>
         </div>
 
-        <div className="z-10 flex-shrink-0 border-t border-border/50 bg-[#f0f2f5] px-4 py-3 sm:px-6">
+        <div className="z-10 flex-shrink-0 border-t border-slate-200/80 bg-white/80 px-4 py-3 backdrop-blur-2xl sm:px-6">
           <div className="mx-auto flex w-full max-w-7xl items-end gap-3">
             <div className="flex-1 relative">
               {isUrgentInput && (
-                <div className="mb-2 flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 shadow-sm">
-                  <span>⚡</span>
-                  <span>High-priority signals detected — Athena will flag this appropriately</span>
+                <div className="mb-2 flex items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700 shadow-sm">
+                  <Gauge className="h-3.5 w-3.5" />
+                  <span>High-priority signals detected. Athena will flag this appropriately.</span>
                 </div>
               )}
               {capturedContextSummary.length > 0 && (
@@ -2573,11 +2947,11 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
                     sendMessage(input);
                   }
                 }}
-                placeholder="Tell me what happened — I'll take care of the rest…"
-              className={`max-h-28 w-full resize-none rounded-full border border-slate-200 bg-white px-4 py-3 pr-12 text-sm text-slate-950 shadow-[0_12px_34px_rgba(15,23,42,0.07)] outline-none transition duration-200 placeholder:text-slate-400 focus:ring-4 ${
-                instructorEvaluationMode ? 'focus:border-blue-400 focus:ring-blue-500/15' : 'focus:border-blue-400 focus:ring-blue-500/15'
+                placeholder="Tell me what happened. I'll take care of the rest."
+              className={`max-h-32 w-full resize-none rounded-[1.5rem] border border-slate-200 bg-white px-4 py-3.5 pr-12 text-sm text-slate-950 shadow-[0_18px_44px_rgba(15,23,42,0.09)] outline-none transition duration-200 placeholder:text-slate-400 focus:ring-4 ${
+                instructorEvaluationMode ? 'focus:border-cyan-400 focus:ring-cyan-500/15' : 'focus:border-cyan-400 focus:ring-cyan-500/15'
               }`}
-                style={{ minHeight: '48px' }}
+                style={{ minHeight: '52px' }}
               />
               <button
                 type="button"
@@ -2589,15 +2963,15 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
                   }
                   requestAnimationFrame(() => textareaRef.current?.focus());
                 }}
-                className="absolute right-2 top-1.5 flex h-9 w-9 items-center justify-center rounded-full border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 shadow-[0_2px_8px_rgba(79,70,229,0.12)] transition hover:-translate-y-0.5 hover:from-blue-100 hover:to-indigo-100 hover:text-indigo-700 hover:shadow-[0_4px_12px_rgba(79,70,229,0.20)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
-                title="Polish your text — expands abbreviations and cleans up common shorthand"
+                className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full border border-cyan-200 bg-gradient-to-br from-cyan-50 to-emerald-50 text-cyan-700 shadow-[0_2px_8px_rgba(14,165,233,0.12)] transition hover:-translate-y-0.5 hover:from-cyan-100 hover:to-emerald-100 hover:text-slate-900 hover:shadow-[0_4px_12px_rgba(14,165,233,0.20)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
+                title="Polish your text: expands abbreviations and cleans up common shorthand"
                 aria-label="Optimise prompt for Athena"
               >
                 <Sparkles className="h-4 w-4" />
               </button>
               {listening && (
                 <div className="mt-1 text-[10px] font-medium text-blue-700">
-                  {voiceHint || (voiceLiveText ? 'Listening… capturing your description' : 'Listening… start speaking')}
+                  {voiceHint || (voiceLiveText ? 'Listening: capturing your description' : 'Listening: start speaking')}
                 </div>
               )}
               {smartVoiceHints.length > 0 && (
@@ -2605,7 +2979,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
                   {smartVoiceHints.map((hint) => (
                     <span
                       key={hint}
-                      className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10.5px] font-semibold text-blue-700 shadow-sm"
+                    className="inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[10.5px] font-bold text-cyan-800 shadow-sm"
                     >
                       {hint}
                     </span>
@@ -2627,8 +3001,8 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-                className={`flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:-translate-y-0.5 ${
-                  instructorEvaluationMode ? 'hover:border-blue-200 hover:text-blue-700' : 'hover:border-blue-200 hover:text-blue-700'
+                className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:-translate-y-0.5 ${
+                  instructorEvaluationMode ? 'hover:border-cyan-200 hover:text-cyan-700' : 'hover:border-cyan-200 hover:text-cyan-700'
                 }`}
               title="Attach files"
               aria-label="Attach files"
@@ -2640,12 +3014,12 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
                 type="button"
                 onClick={listening ? stopVoiceCapture : startVoiceCapture}
                 disabled={loading}
-                className={`flex h-11 w-11 items-center justify-center rounded-full border shadow-sm transition ${
+                className={`flex h-12 w-12 items-center justify-center rounded-2xl border shadow-sm transition ${
                   listening
                     ? instructorEvaluationMode
-                      ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                      : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                    : `border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 ${instructorEvaluationMode ? 'hover:border-blue-200 hover:text-blue-700' : 'hover:border-blue-200 hover:text-blue-700'}`
+                      ? 'border-cyan-300 bg-cyan-50 text-cyan-700 hover:bg-cyan-100'
+                      : 'border-cyan-300 bg-cyan-50 text-cyan-700 hover:bg-cyan-100'
+                    : `border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 ${instructorEvaluationMode ? 'hover:border-cyan-200 hover:text-cyan-700' : 'hover:border-cyan-200 hover:text-cyan-700'}`
                 } disabled:cursor-not-allowed disabled:opacity-45`}
                 title={listening ? 'Stop voice input' : 'Start voice input'}
                 aria-label={listening ? 'Stop voice input' : 'Start voice input'}
@@ -2656,17 +3030,17 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || loading}
-              className={`flex h-11 w-11 items-center justify-center rounded-full text-white shadow-lg transition duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-35 ${
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg transition duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-35 ${
                 instructorEvaluationMode
-                  ? 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700'
-                  : 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-700'
+                  ? 'bg-slate-950 shadow-slate-950/20 hover:bg-slate-800'
+                  : 'bg-slate-950 shadow-slate-950/20 hover:bg-slate-800'
               }`}
             >
               <Send className="w-4 h-4" />
             </button>
           </div>
           <p className="mx-auto mt-1 w-full max-w-7xl px-1 text-[10px] font-medium text-slate-400">
-            Press Enter to send · Shift+Enter for new line · Attachments welcome if they help paint the picture
+            Press Enter to send. Shift+Enter for a new line. Attachments are optional.
           </p>
         </div>
         </>
@@ -3417,28 +3791,7 @@ function suggestionsForDetailField(field: DetailFormField): string[] {
       'Reception and waiting area — member noted the area felt overcrowded before the 7 AM class.',
     ];
   }
-  if (id.toLowerCase().includes('description') || /describe|issue|detail/.test(label)) {
-    return [
-      'Member reported the concern during a studio touchpoint and requested follow-up.',
-      'Member stated the issue affected their session experience and wants a resolution timeline.',
-      'Team member documented the concern with studio, session, and member impact context.',
-    ];
-  }
-  if (id.toLowerCase().includes('resolution') || /resolution|outcome|action/.test(label)) {
-    return [
-      'Member requested a callback with the confirmed next step.',
-      'Member requested written confirmation by WhatsApp or email.',
-      'Team member offered an interim solution while the issue is reviewed.',
-    ];
-  }
-  if (id.toLowerCase().includes('feedback') || /feedback|comment/.test(label)) {
-    return [
-      'Member expressed mixed feedback and asked that the concern be shared internally.',
-      'Member complimented the instructor and noted the class energy felt strong.',
-      'Member stated the touchpoint did not meet their expected Physique 57 standard.',
-    ];
-  }
-  return suggestionsForTemplateTextField(field.label);
+  return [];
 }
 
 const SuggestionChips: React.FC<{ suggestions: string[]; onPick: (value: string) => void }> = ({ suggestions, onPick }) => (
@@ -3548,19 +3901,14 @@ const MessageBubble: React.FC<{
       className={`animate-chat-message-in flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
       style={{ animationDelay: `${Math.min(index * 28, 240)}ms` }}
     >
-      {!isUser && message.aiGenerated && (
-        <div
-          className="mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full border border-blue-200 bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600 shadow-[0_2px_6px_rgba(79,70,229,0.15)]"
-          title="AI generated"
-          aria-label="AI generated"
-        >
-          <Sparkles className="h-3 w-3" />
-        </div>
-      )}
       <div className={`flex w-full items-end gap-2 ${isUser ? 'flex-row-reverse justify-end' : ''}`}>
         {!isUser && (
-          <div className="h-8 w-8 rounded-full overflow-hidden bg-gradient-to-br from-blue-100 to-indigo-100 border-2 border-blue-200 flex-shrink-0 p-0.5 mb-0.5 shadow-sm">
-            <img src="/download-1.png" alt="Athena" className="-scale-x-100 w-full h-full rounded-full object-cover" />
+          <div
+            className="mb-0.5 h-8 w-8 flex-shrink-0 overflow-hidden rounded-full border-2 border-blue-300/80 bg-gradient-to-br from-blue-100 to-indigo-100 p-0.5 shadow-sm"
+            title={message.aiGenerated ? 'AI generated' : 'Athena'}
+            aria-label={message.aiGenerated ? 'AI generated' : 'Athena'}
+          >
+            <img src="/download-1.png" alt="Athena" className="-scale-x-100 w-full h-full rounded-full object-cover" style={{ filter: 'hue-rotate(225deg) saturate(1.45) contrast(1.08)' }} />
           </div>
         )}
         <div className={`${isUser ? 'ml-auto w-[52%] pl-12' : 'w-full pr-6'}`}>
@@ -3634,11 +3982,11 @@ const MessageBubble: React.FC<{
                 <ClipboardCheck className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-900">Draft ready — tap to review ✅</span>
+                <span className="block text-sm font-semibold text-slate-900">Draft ready. Tap to review.</span>
                 <span className="block truncate text-xs text-slate-500">{message.ticket.title}</span>
               </span>
               <span className="rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_3px_10px_rgba(79,70,229,0.30)]">
-                Review →
+                Review
               </span>
             </button>
           )}
@@ -3808,8 +4156,8 @@ const DraftTicketReviewPreview: React.FC<{
 
 const TypingIndicator: React.FC = () => (
   <div className="animate-p57-fade-up flex items-end gap-2">
-    <div className="h-8 w-8 rounded-full overflow-hidden bg-gradient-to-br from-blue-100 to-indigo-100 border-2 border-blue-200 flex-shrink-0 p-0.5 shadow-sm">
-      <img src="/download-1.png" alt="Athena" className="-scale-x-100 w-full h-full rounded-full object-cover" />
+    <div className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full border-2 border-blue-300/80 bg-gradient-to-br from-blue-100 to-indigo-100 p-0.5 shadow-sm">
+      <img src="/download-1.png" alt="Athena" className="-scale-x-100 w-full h-full rounded-full object-cover" style={{ filter: 'hue-rotate(225deg) saturate(1.45) contrast(1.08)' }} />
     </div>
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-sm border border-blue-100/70 border-l-[3px] border-l-blue-400/60 bg-gradient-to-br from-white to-blue-50/50 px-4 py-3 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">

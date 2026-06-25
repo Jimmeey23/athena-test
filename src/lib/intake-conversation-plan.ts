@@ -142,13 +142,6 @@ export function buildIntakeConversationPlan({
   }
 
   steps.push({
-    id: 'resolution-required',
-    title: 'Confirm whether this ticket requires a resolution',
-    fieldIds: ['resolutionRequired'],
-    reason: 'This final gate separates actionable tickets from record-only documentation.',
-  });
-
-  steps.push({
     id: 'draft-review',
     title: 'Draft only after required context is complete',
     fieldIds: [],
@@ -218,10 +211,6 @@ export function buildNaturalSingleFieldPrompt({ field, reporterFirstName }: Natu
   if (field.id === 'incidentDateTime') {
     return `${prefix}when did this happen or first get noticed?`;
   }
-  if (field.id === 'resolutionRequired') {
-    return `${prefix}Does this ticket require a resolution?`;
-  }
-
   if (field.type === 'select') return `${prefix}${questionFromLabel(field.label)}`;
   return `${prefix}please share ${field.label.toLowerCase()}.`;
 }

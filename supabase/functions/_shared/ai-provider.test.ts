@@ -22,6 +22,7 @@ describe('AI provider selection', () => {
   it('supports OpenAI-compatible request bodies for DeepSeek and OpenAI', () => {
     const config = resolveAiProviderConfig(env({ OPENAI_API_KEY: 'openai-key' }), 'openai');
     expect(config).not.toBeNull();
+    expect(config?.maxTokens).toBe(2200);
 
     const request = buildJsonAiRequest(config!, 'system prompt', 'user prompt', 0.2);
 
@@ -29,9 +30,19 @@ describe('AI provider selection', () => {
     expect(request.headers.Authorization).toBe('Bearer openai-key');
     expect(request.body).toMatchObject({
       model: 'gpt-4o-mini',
+      max_tokens: 2200,
       response_format: { type: 'json_object' },
       temperature: 0.2,
     });
+  });
+
+  it('keeps provider max-token overrides explicit for larger reporting tasks', () => {
+    const config = resolveAiProviderConfig(env({
+      OPENAI_API_KEY: 'openai-key',
+      OPENAI_MAX_TOKENS: '3200',
+    }), 'openai');
+
+    expect(config?.maxTokens).toBe(3200);
   });
 
   it('supports Claude messages requests', () => {

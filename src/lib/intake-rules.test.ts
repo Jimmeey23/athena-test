@@ -251,17 +251,6 @@ describe('intake publishability rules', () => {
 
     expect(
       inferIntakeContextFromText(
-        'Client reported a missing cash envelope from the locker after a cycle trial class.'
-      )
-    ).toMatchObject({
-      intakeRoute: 'Complaint',
-      category: 'Safety and Security',
-      subCategory: 'Theft Prevention Measures',
-      priority: 'Critical',
-    });
-
-    expect(
-      inferIntakeContextFromText(
         'Hosted class feedback: attendees said the studio was too far and several prospects requested drop-in pricing details.'
       )
     ).toMatchObject({
@@ -291,6 +280,44 @@ describe('intake publishability rules', () => {
       subCategory: 'Prospect Conversion Opportunity',
       priority: 'Medium',
       studio: 'Kwality House, Kemps Corner',
+    });
+  });
+
+  it('routes theft and lost-item reports to specific non-Other classifications', () => {
+    expect(
+      inferIntakeContextFromText('Money stolen from locker room at Kemps Corner')
+    ).toMatchObject({
+      intakeRoute: 'Complaint',
+      category: 'Theft and Lost Items',
+      subCategory: 'Locker Theft',
+      priority: 'Critical',
+      studio: 'Kwality House, Kemps Corner',
+    });
+
+    expect(
+      inferIntakeContextFromText('Client reported a missing cash envelope from the locker after a cycle trial class.')
+    ).toMatchObject({
+      intakeRoute: 'Complaint',
+      category: 'Theft and Lost Items',
+      subCategory: 'Locker Theft',
+      priority: 'Critical',
+    });
+
+    expect(
+      inferIntakeContextFromText("Trainer Anmol's money was stolen from the trainer area again.")
+    ).toMatchObject({
+      intakeRoute: 'Complaint',
+      category: 'Theft and Lost Items',
+      subCategory: 'Personal Items Taken from Trainer Area',
+      priority: 'Critical',
+    });
+
+    expect(
+      inferIntakeContextFromText('Member left her shoes behind at Bandra and wants lost and found to check.')
+    ).toMatchObject({
+      intakeRoute: 'Request',
+      category: 'Theft and Lost Items',
+      subCategory: 'Lost Shoes/Workout Gear',
     });
   });
 
@@ -461,6 +488,16 @@ describe('intake publishability rules', () => {
       studio: 'Kenkere House, Bengaluru',
       classType: 'Studio Back Body Blaze',
       trainer: 'Siddhartha Kusuma',
+    });
+  });
+
+  it('routes cracked PowerCycle monitor reports to broken equipment instead of TFA malfunction', () => {
+    expect(
+      inferIntakeContextFromText('Cycle monitor not working at Bandra studio. Monitor screen cracked.')
+    ).toMatchObject({
+      category: 'Repair and Maintenance',
+      subCategory: 'Broken Equipment',
+      studio: 'Supreme HQ, Bandra',
     });
   });
 
