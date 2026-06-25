@@ -1723,14 +1723,14 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         singleFieldChips.length > 0
       );
       const assistantContent = singleField
-        ? buildNaturalSingleFieldPrompt({
+        ? (data?.reply || buildNaturalSingleFieldPrompt({
             field: singleField,
             reporterFirstName,
-          })
+          }))
         : finalDetailForm
-          ? `${reporterFirstName ? `${reporterFirstName}, ` : ''}Just a couple more details and we'll have a clean draft ready! 🙂`
+          ? (data?.reply || `${reporterFirstName ? `${reporterFirstName}, ` : ''}Just a couple more details and we'll have a clean draft ready! 🙂`)
           : ticket
-            ? "Looks good — I've drafted the ticket below. Take a quick look before publishing."
+            ? (data?.reply || "Looks good — I've drafted the ticket below. Take a quick look before publishing.")
             : data?.reply || "Hmm, I didn't quite catch that. Could you tell me a bit more?";
       setPendingSingleField(null);
       await sleep(writingPauseMs(assistantContent));
