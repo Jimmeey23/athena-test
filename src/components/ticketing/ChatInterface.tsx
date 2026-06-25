@@ -2190,7 +2190,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         </div>
       </div>
 
-      <div className="relative z-10 flex h-full w-full flex-col bg-background lg:w-[68%] 2xl:w-[48%]">
+      <div className="relative z-10 flex h-full min-w-0 flex-1 flex-col bg-background">
         <div className="animate-chat-header-in flex items-center justify-between border-b border-blue-100/80 bg-gradient-to-r from-white via-blue-50/40 to-indigo-50/30 px-4 py-2.5 shadow-[0_1px_8px_rgba(15,23,42,0.06)]">
           <div className="flex min-w-0 items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-blue-300/80 bg-gradient-to-br from-blue-100 to-indigo-100 shadow-[0_4px_14px_rgba(79,70,229,0.18)]">
@@ -2603,7 +2603,7 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         )}
       </div>
 
-      <div className="hidden 2xl:flex h-full w-[26%] shrink-0 flex-col border-l border-slate-200 bg-white overflow-hidden">
+      <div className="hidden xl:flex h-full w-[240px] 2xl:w-[260px] shrink-0 flex-col border-l border-slate-100 bg-slate-50/40 overflow-hidden">
         <LiveTicketBuilder
           context={context}
           activeDraft={activeDraftReviewMessage?.ticket ?? null}
@@ -3928,7 +3928,7 @@ const InstructorEvaluationChatbox: React.FC<{
         <div className="md:col-span-2">
           <MomenceSessionDropdownField
             multi={false}
-            sessionTypes={context.category === 'Hosted Class & Partnerships' ? HOSTED_CLASS_SESSION_TYPES : []}
+            sessionTypes={[]}
             values={{ sessionId, classType, classDateTime: reviewPeriod, trainer: instructor, studio }}
             onChange={(sessions) => {
               const session = sessions[0];

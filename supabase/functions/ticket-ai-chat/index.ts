@@ -329,6 +329,31 @@ function normalizeDepartmentName(department?: string | null): string {
   return DEPARTMENTS.find((item) => item.toLowerCase() === normalized) || department || 'Management';
 }
 
+const CATEGORY_SUBCATEGORIES: Record<string, string[]> = {
+  Scheduling: ['Time Change', 'Level Change', 'Additional Classes', 'Trainer Preferences', 'Class Capacity Issues', 'Waitlist Concerns', 'Studio Timings', 'Cancellation Policy', 'Booking Restrictions', 'Class Substitutions', 'Trainer Substitutions', 'Last-minute Cancellations', 'Late Arrival Policy', 'Booking Confirmation Issues', 'Rescheduling Flexibility'],
+  'Class Experience': ['Bad Odour', 'Audio Issues', 'Studio Temperature Too Hot/Cold', 'Overcrowding in Class', 'Class Flow and Pacing', 'Modifications in Routine', 'Engagement with Clients', 'Hands-on Adjustments', 'Demonstration and Visual Cues', 'Knowledge and Competence', 'Instructor Energy and Motivation', 'Class Variety and Themes'],
+  'Trainer Feedback': ['Trainer Forgot Names', 'Class Intensity Too High/Low', 'Trainer Hygiene', 'Trainer Punctuality Issues', 'Trainer Behaviour', 'Modifications in Routine', 'Engagement with Clients', 'Hands-on Adjustments', 'Demonstration and Visual Cues', 'Knowledge and Competence', 'Brand Language Usage', 'Pre and Post-Class Outreach', 'Trainer Availability', 'Feedback Handling', 'Trainer Encouragement', 'Too Many Corrections vs. Too Few'],
+  'Repair and Maintenance': ['AC and HVAC Issues', 'Lighting Issues', 'Audio System Malfunction', 'Pest Control Needed', 'Plumbing Leaks', 'General Maintenance Delays', 'Door Lock Issues', 'Fire Safety Compliance', 'Water Dispenser Issues', 'Broken Equipment', 'TFA Malfunction', 'Staff Uniforms Not Clean', 'Toiletries and Supplies Low', 'Towel Availability Issues'],
+  'Studio Amenities and Facilities': ['Studio Odour and Aroma', 'Cleanliness and Hygiene', 'Ventilation Poor', 'Air Quality Poor', 'Valet Issues', 'Locker Availability', 'Shower Water Pressure', 'Steam Room Not Working', 'Boutique Availability Issues', 'Wi-Fi Slow', 'Lost and Found Disorganization'],
+  'Operating Systems': ['Momence Issues', 'Stripe and Razorpay', 'Website Glitches', 'Router Connectivity', 'iPad Functionality', 'POS System Malfunctions', 'Payment Gateway Issue', 'Technical Assistance'],
+  'Pricing and Memberships': ['Membership Pause and Freeze Policy', 'Refund and Cancellation Policy Issue', 'Membership Upgrade/Downgrade', 'Class Pack Expiry Confusion', 'Late Cancellation Fee Dispute', 'Complimentary Class Request', 'Trial Class Conversion', 'Package Renewal', 'Credit/Rollover Request'],
+  'Customer Service and Communication': ['Delay in Response', 'Staff Behaviour', 'WhatsApp Follow-up Missed', 'Email Not Responded', 'Front Desk Issue', 'Member Not Informed', 'Communication Gap'],
+  'Safety and Security': ['Theft Prevention Measures', 'Harassment Reports', 'Personal Safety Concerns', 'Security Breach', 'Emergency Incident'],
+  'Hosted Class & Partnerships': ['Hosted Class Feedback', 'Prospect Conversion Opportunity', 'Partner Instructor Feedback', 'Lead Quality Note', 'Guestlist Issue', 'Collaboration Request'],
+  'App & Digital': ['App Crash', 'Login Issue', 'Push Notifications', 'Payment Gateway Issue', 'Momence Account Sync', 'Booking Confirmation Missing', 'Website Chat / Lead Form Issue'],
+  'Sales & Consultation': ['Competitor Mentioned', 'Prospect Price Concern', 'Lead Quality Note', 'Trial Conversion', 'Drop-in Query'],
+  'Brand Feedback': ['Brand Language Usage', 'Marketing Feedback', 'Social Media Feedback', 'Event Feedback'],
+  'Member Progress & Transformation': ['Injury Concern', 'Goal Setting', 'Progress Tracking', 'Modification Request', 'Return from Injury'],
+  'Theft and Lost Items': ['Lost Item', 'Stolen Item', 'Found Item', 'Locker Break-in'],
+  'General Feedback': ['Compliment', 'Suggestion', 'General Comment', 'Other'],
+  'Facility & Equipment': ['Broken Equipment', 'Bike / Cycle Issue', 'Monitor Malfunction', 'Barre Equipment', 'Props and Accessories', 'AC and HVAC Issues', 'Plumbing Leaks', 'Lighting Issues', 'Door Lock Issues', 'General Maintenance'],
+  'Billing & Membership': ['Refund Request', 'Membership Freeze', 'Rollover Request', 'Package Expiry', 'Late Cancellation Fee', 'Upgrade / Downgrade', 'Credit Request', 'Billing Dispute'],
+  'Booking & Schedule': ['Class Availability', 'Waitlist Issue', 'Booking Confirmation', 'Rescheduling', 'Late Arrival', 'Cancellation Policy', 'Trainer Substitution'],
+  'Instructor & Class Quality': ['Class Flow', 'Instructor Energy', 'Engagement', 'Modifications', 'Hands-on Adjustments', 'Intensity Level', 'Knowledge and Cues'],
+  'Front Desk & Service': ['Staff Behaviour', 'Delay in Response', 'Communication Gap', 'Check-in Issue', 'Member Not Informed'],
+  'Safety & Medical': ['Injury on Premises', 'Medical Emergency', 'First Aid Required', 'Unsafe Equipment', 'Security Breach'],
+};
+
 const ASSIGNMENT_RULES: Record<string, { assignedTo: string; team: string }> = {
   Scheduling: { assignedTo: 'Akshay Rane', team: 'Sales & Client Servicing' },
   'Class Experience': { assignedTo: 'Anisha Shah', team: 'Training & Client Experience' },
@@ -366,6 +391,7 @@ const SERVER_MASTER_DATA = {
     'the Studio by Copper & Cloves, Bengaluru',
   ],
   categories: Object.keys(ASSIGNMENT_RULES),
+  categorySubcategories: CATEGORY_SUBCATEGORIES,
   departments: DEPARTMENTS,
   priorities: Object.keys(PRIORITY_SLA_HOURS),
   clientsAffectedOptions: CLIENTS_AFFECTED_OPTIONS,
@@ -463,173 +489,6 @@ function hasConfirmedAffectedClients(value: unknown): boolean {
   return /^yes\b/i.test(cleanString(value));
 }
 
-function hasNamedPersonRequestReference(text: string): boolean {
-  const value = text.trim().replace(/\s+/g, ' ');
-  if (/^(front desk|studio team|ops team|sales team|team member|instructor|trainer|manager)\b/i.test(value)) return false;
-  return /^[a-z][a-z'.-]+\s+[a-z][a-z'.-]+(?:\s+[a-z][a-z'.-]+)?\s+(?:is\s+)?(?:asking|asked|requesting|requested|wants|wanted|would like|needs)\b/i.test(value);
-}
-
-function hasPersonalCommercialReference(text: string): boolean {
-  return /\b(member|client|customer|guest|prospect)\b/i.test(text) ||
-    /\b(she|he|her|his|their)\b/i.test(text) ||
-    hasNamedPersonRequestReference(text);
-}
-
-function shouldRequireNamedMemberContext(
-  text: string,
-  context: Record<string, unknown>,
-  category: string,
-): boolean {
-  if (cleanString(context.memberId) || cleanString(context.memberName)) return false;
-  if (['Repair and Maintenance', 'Studio Amenities and Facilities', 'Facility & Equipment', 'Operating Systems', 'Tech Issues', 'App & Digital'].includes(category)) {
-    return false;
-  }
-
-  const lower = [
-    text,
-    cleanString(context.initialReport),
-    cleanString(context.requestType),
-    cleanString(context.category),
-    cleanString(context.subCategory),
-    cleanString(context.description),
-  ].filter(Boolean).join(' ').toLowerCase();
-
-  const entityText = [
-    text,
-    cleanString(context.initialReport),
-    cleanString(context.description),
-    cleanString(context.requestType),
-  ].filter(Boolean).join(' ').toLowerCase();
-
-  return hasPersonalCommercialReference(entityText)
-    && /refund|billing|payment|membership|package|freeze|roll\s?over|extension|renewal|cancel|complain|complaint|follow-up|follow up|contact|whatsapp|email|phone|profile|account/.test(lower);
-}
-
-function hasAffectedClassSignal(text: string, context: Record<string, unknown>): boolean {
-  const lower = [
-    text,
-    cleanString(context.initialReport),
-    cleanString(context.description),
-    cleanString(context.operationalImpact),
-    cleanString(context.currentWorkaround),
-    cleanString(context.classImpactType),
-    cleanString(context.classImpactDetails),
-  ].filter(Boolean).join(' ').toLowerCase();
-
-  return /\b(?:classes?|sessions?|schedule)\b.{0,36}\b(?:affected|impacted|delayed|paused|cancelled|canceled|moved|disrupted)\b/.test(lower) ||
-    /\b(?:affected|impacted|delayed|paused|cancelled|canceled|moved|disrupted)\b.{0,36}\b(?:classes?|sessions?|schedule)\b/.test(lower) ||
-    /\bclass flow\b|\bfull class\b|\bhad to pause\b|\bmembers?\s+stepped out\b|\bwalked out\b/.test(lower);
-}
-
-function shouldRequireComplaintResolution(
-  text: string,
-  context: Record<string, unknown>,
-  category: string,
-): boolean {
-  if (cleanString(context.desiredResolution)) return false;
-  if (!shouldRequireNamedMemberContext(text, { ...context, memberId: '', memberName: '' }, category)) return false;
-
-  const lower = [
-    text,
-    cleanString(context.initialReport),
-    cleanString(context.description),
-    cleanString(context.requestType),
-    cleanString(context.category),
-    cleanString(context.subCategory),
-  ].filter(Boolean).join(' ').toLowerCase();
-
-  if (/wants?\s+(a\s+)?(follow-?up|call|email|whatsapp|refund|waiver|extension|credit)|requested\s+(a\s+)?(follow-?up|call|email|whatsapp|refund|waiver|extension|credit)/.test(lower)) {
-    return false;
-  }
-
-  return /complain|complaint|refund|billing|payment|delay|not resolved|follow-?up/.test(lower);
-}
-
-const STANDARD_CONTEXT_DETAIL_KEYS = new Set([
-  'intakeRoute',
-  'requestType',
-  'clientsAffected',
-  'memberId',
-  'memberName',
-  'memberContact',
-  'sessionId',
-  'studio',
-  'trainer',
-  'classType',
-  'classDateTime',
-  'membership',
-  'category',
-  'subCategory',
-  'reportedBy',
-  'priority',
-  'description',
-  'incidentDateTime',
-  'desiredResolution',
-  'urgencyReason',
-  'memberSentiment',
-  'resolutionRequired',
-  'momencePurchaseContext',
-  'classImpactType',
-  'classImpactDetails',
-  'freezeStartDate',
-  'freezeEndDate',
-  'freezeReason',
-  'classesRemaining',
-  'packageExpiryDate',
-  'requestedRolloverDate',
-  'rolloverReason',
-  'partnerName',
-  'hostedFeedbackArea',
-  'attendeeCount',
-  'prospectQuality',
-  'followUpPreference',
-  'initialReport',
-]);
-
-function hasSpecificConcernDetail(text?: string): boolean {
-  const value = cleanString(text).toLowerCase();
-  if (!value) return false;
-
-  return /\b(?:because|due to|since|as\s+(?:she|he|they|the member|client))\b/.test(value)
-    || /\b(?:overcrowd|too\s+loud|music|unhappy|dissatisfied|poor|denied|dirty|unclean|hot|cold|unsafe|injur|pain|not\s+(?:received|resolved|allowed|working|happy)|unable|could\s+not|wasn['’]?t|isn['’]?t)\b/.test(value);
-}
-
-function hasSupplementalIssueSpecifics(context: Record<string, unknown>): boolean {
-  return Object.entries(context).some(([key, value]) => {
-    if (STANDARD_CONTEXT_DETAIL_KEYS.has(key)) return false;
-    if (!cleanString(value) || PLACEHOLDER_VALUE_PATTERN.test(cleanString(value))) return false;
-    const normalizedKey = key
-      .replace(/([a-z])([A-Z])/g, '$1 $2')
-      .replace(/[_:-]+/g, ' ')
-      .toLowerCase();
-    const normalizedValue = cleanString(value);
-    if (normalizedValue.length < 5) return false;
-
-    return /\b(?:reason|why|because|concern|issue|problem|experience|feedback|dissatisfaction|impact)\b/.test(normalizedKey)
-      || hasSpecificConcernDetail(normalizedValue);
-  });
-}
-
-function shouldRequireFullIssueSummary(
-  text: string,
-  context: Record<string, unknown>,
-  category: string,
-): boolean {
-  const description = cleanString(context.description);
-  if (!description) return true;
-  if (!shouldRequireNamedMemberContext(text, { ...context, memberId: '', memberName: '' }, category)) return false;
-
-  const lower = [
-    text,
-    cleanString(context.initialReport),
-    description,
-  ].filter(Boolean).join(' ').toLowerCase();
-
-  if (description.length >= 60) return false;
-  if (!/complain|complaint|refund|billing|payment|delay|not resolved/.test(lower)) return false;
-
-  return !hasSpecificConcernDetail(description) && !hasSupplementalIssueSpecifics(context);
-}
 
 function computeSlaDueAt(priority: Priority): string {
   const dueAt = new Date();
@@ -1148,7 +1007,7 @@ async function askAiForIntake(body: RequestBody, instructions: string, knowledge
       'For issue-specific fields, create clear snake_case IDs prefixed by the category or subcategory. Prefer select fields with options for every bounded answer. Use text/textarea only when the value is genuinely open-ended.',
       'Never ask constants, dates, timestamps, counts, amounts, priority, category, studio, sentiment, class impact, clients affected, status, or resolution yes/no as plain text. Use select/date/datetime-local/number.',
       'When exactly one select field is needed, prefer suggestedChips for that field so the UI renders button options. Keep detailForm null in that case unless a Momence picker is required.',
-      'Infer category and subCategory from the report whenever possible. Ask for category or subCategory only when the text is genuinely ambiguous after using the approved master data.',
+      'Infer category and subCategory from the report whenever possible. Ask for category or subCategory only when the text is genuinely ambiguous after using the approved master data. ALWAYS pick subCategory from masterData.categorySubcategories[category] — never use "Other" unless it is explicitly listed there for that category.',
       `Use clientsAffected only when member/client impact is relevant; valid values are: ${CLIENTS_AFFECTED_OPTIONS.join(', ')}.`,
       'If clientsAffected starts with "Yes" and specific affected members matter for resolution, use memberName so the frontend renders Momence member search.',
       `If a class/session/schedule was materially affected and the owner needs the session record, use classType, classImpactType, and classImpactDetails. classImpactType options: ${CLASS_IMPACT_TYPE_OPTIONS.join(', ')}.`,
@@ -1383,20 +1242,11 @@ function inferContextFromText(text: string, context: Record<string, unknown> = {
 }
 
 function requiredFieldsForIssue(
-  text: string,
+  _text: string,
   context: Record<string, unknown>,
-  options: { includeClientImpact?: boolean } = {},
+  _options: { includeClientImpact?: boolean } = {},
 ): DetailFieldId[] {
-  const lower = [
-    text,
-    cleanString(context.initialReport),
-    cleanString(context.requestType),
-    cleanString(context.category),
-    cleanString(context.subCategory),
-    cleanString(context.description),
-  ].filter(Boolean).join(' ').toLowerCase();
   const intakeRoute = cleanString(context.intakeRoute);
-  const route = intakeRoute.toLowerCase();
   const category = cleanString(context.category);
   const subCategory = cleanString(context.subCategory);
   const fields: DetailFieldId[] = [];
@@ -1405,6 +1255,7 @@ function requiredFieldsForIssue(
     if (!cleaned || PLACEHOLDER_VALUE_PATTERN.test(cleaned)) fields.push(field);
   };
 
+  // Hard minimums only — the AI handles all issue-specific field collection.
   add('intakeRoute', context.intakeRoute);
   if (!intakeRoute) return Array.from(new Set(fields));
 
@@ -1412,166 +1263,15 @@ function requiredFieldsForIssue(
   add('subCategory', context.subCategory);
   if (!category || !subCategory) return Array.from(new Set(fields));
 
-  const physicalStudioCategories = new Set([
-    'Scheduling',
-    'Class Experience',
-    'Trainer Feedback',
-    'Repair and Maintenance',
-    'Studio Amenities and Facilities',
-    'Safety and Security',
-    'Theft and Lost Items',
-    'Miscellaneous',
-    'Instructor & Class Quality',
-    'Booking & Schedule',
-    'Facility & Equipment',
-    'Front Desk & Service',
+  const studioCategories = new Set([
+    'Scheduling', 'Class Experience', 'Trainer Feedback', 'Repair and Maintenance',
+    'Studio Amenities and Facilities', 'Safety and Security', 'Theft and Lost Items',
+    'Miscellaneous', 'Instructor & Class Quality', 'Booking & Schedule',
+    'Facility & Equipment', 'Front Desk & Service', 'Safety & Medical',
   ]);
-  // Categories that are strictly facility/ops — a specific member is never required
-  const physicalOnlyCategories = new Set([
-    'Repair and Maintenance',
-    'Studio Amenities and Facilities',
-    'Facility & Equipment',
-    'Operating Systems',
-    'Tech Issues',
-    'App & Digital',
-  ]);
-  const classContextCategories = new Set(['Scheduling', 'Class Experience', 'Trainer Feedback', 'Instructor & Class Quality', 'Booking & Schedule']);
-  const membershipSpecific = /freeze|pause|roll|extension|membership|package|renewal|upgrade|downgrade|auto-renew|refund|expiry|credit|class pack|billing|payment/.test(lower);
-  const hostedSpecific = /hosted|partner|influencer|partnership/.test(lower) || category === 'Hosted Class & Partnerships';
-  const prioritySpecific = route !== 'feedback' || /safety|security|theft|repair|maintenance|tech|operating|pricing|membership|customer service|complaint|urgent|injury|hazard/.test(`${category} ${subCategory} ${lower}`.toLowerCase());
-  const includeClientImpact = options.includeClientImpact ?? true;
+  if (studioCategories.has(category)) add('studio', context.studio);
 
-  if (includeClientImpact) {
-    // For purely physical/facility issues reported outside class hours, auto-set clientsAffected
-    // to "No clients affected" so staff aren't interrupted by this question when members aren't present.
-    // Staff can still override if wrong. Hours check: outside 6am–10pm is almost certainly after hours.
-    const isPhysicalOnly = physicalOnlyCategories.has(category);
-    const incidentTimeRaw = cleanString(context.incidentDateTime);
-    const isAfterHours = (() => {
-      if (!incidentTimeRaw) return false;
-      try {
-        const dt = new Date(incidentTimeRaw);
-        if (isNaN(dt.getTime())) return false;
-        const hour = dt.getHours();
-        return hour < 6 || hour >= 22;
-      } catch { return false; }
-    })();
-    const effectiveClientsAffected = (isPhysicalOnly && isAfterHours && !cleanString(context.clientsAffected))
-      ? 'No clients affected'
-      : cleanString(context.clientsAffected);
-    add('clientsAffected', effectiveClientsAffected);
-  }
-
-  // Always require studio for any physical in-studio category — no keyword guard needed
-  if (physicalStudioCategories.has(category)) add('studio', context.studio);
-
-  // For physical/maintenance/amenity issues, always require when it was first noticed.
-  // This is a structural guard — the AI decides everything else about what to ask.
-  const isPhysicalCategory = physicalOnlyCategories.has(category);
-  if (isPhysicalCategory) {
-    add('incidentDateTime', context.incidentDateTime);
-    const bikeIssue = /\b(?:bike|spin bike|cycle bike|powercycle bike|power cycle bike)\b|\bbike\s*(?:no|number|#)?\s*\d+\b/.test(lower);
-    if (bikeIssue) {
-      add('bikeSymptom', context.bikeSymptom);
-      add('operationalImpact', context.operationalImpact);
-      add('currentWorkaround', context.currentWorkaround);
-      add('resolutionRequirement', context.resolutionRequirement);
-    } else if (/washing|washer|laundry|dryer|machine/.test(lower)) {
-      add('machineSymptom', context.machineSymptom);
-      add('operationalImpact', context.operationalImpact);
-      add('currentWorkaround', context.currentWorkaround);
-      add('resolutionRequirement', context.resolutionRequirement);
-    } else if (/^Broken Equipment(?: Not Repaired)?$/i.test(subCategory) || /equipment|studio tool|method tool|tool|prop|mat|weights?|ball|barre|station/.test(lower)) {
-      add('equipmentSymptom', context.equipmentSymptom);
-      add('operationalImpact', context.operationalImpact);
-      add('currentWorkaround', context.currentWorkaround);
-      add('resolutionRequirement', context.resolutionRequirement);
-    } else if (/\bdoor\b|\block\b|latch|handle|hinge|\baccess\b|closing|opening/.test(lower) || subCategory === 'Door Lock Issues') {
-      add('lockFaultType', context.lockFaultType);
-      add('accessStatus', context.accessStatus);
-      add('securityRisk', context.securityRisk);
-      add('resolutionRequirement', context.resolutionRequirement);
-    } else if (HVAC_TEXT_PATTERN.test(lower) || subCategory === 'AC and HVAC Issues') {
-      add('hvacSymptom', context.hvacSymptom);
-      add('affectedArea', context.affectedArea);
-      add('operationalImpact', context.operationalImpact);
-      add('currentWorkaround', context.currentWorkaround);
-      add('resolutionRequirement', context.resolutionRequirement);
-    } else if (/plumbing|leak|drain|clog|flush|sewage|overflow|pipe|water/.test(lower) || subCategory === 'Plumbing Leaks') {
-      add('plumbingSymptom', context.plumbingSymptom);
-      add('affectedArea', context.affectedArea);
-      add('operationalImpact', context.operationalImpact);
-      add('currentWorkaround', context.currentWorkaround);
-      add('resolutionRequirement', context.resolutionRequirement);
-    } else if (/light|lighting|bulb|fused|flickering|electrical|socket|wiring|power|trip/.test(lower) || subCategory === 'Lighting Issues') {
-      add('electricalSymptom', context.electricalSymptom);
-      add('affectedArea', context.affectedArea);
-      add('operationalImpact', context.operationalImpact);
-      add('currentWorkaround', context.currentWorkaround);
-      add('resolutionRequirement', context.resolutionRequirement);
-    } else if (/app|website|login|password|payment gateway|momence|sync|qr|ipad|wi-?fi|wifi|router/.test(lower) || category === 'App & Digital' || category === 'Tech Issues') {
-      add('appIssueSurface', context.appIssueSurface);
-      add('appErrorObserved', context.appErrorObserved);
-      add('deviceContext', context.deviceContext);
-      add('operationalImpact', context.operationalImpact);
-      add('currentWorkaround', context.currentWorkaround);
-    }
-  }
-  if (shouldRequireNamedMemberContext(text, context, category)) {
-    add('memberName', context.memberId || context.memberName);
-  }
-  if (hasConfirmedAffectedClients(context.clientsAffected)) {
-    add('memberName', context.memberId || context.memberName);
-    if (hasAffectedClassSignal(text, context)) {
-      add('classType', context.sessionId || context.classType);
-      add('classImpactType', context.classImpactType);
-      add('classImpactDetails', context.classImpactDetails);
-    }
-  }
-  if (membershipSpecific && /select active membership|which membership|membership record|package record/.test(lower)) {
-    add('membership', context.membership);
-    if (/freeze start date|freeze end date|exact freeze dates/.test(lower)) {
-      add('freezeStartDate', context.freezeStartDate);
-      add('freezeEndDate', context.freezeEndDate);
-      add('freezeReason', context.freezeReason);
-    }
-    if (/classes remaining|package expiry date|requested rollover date|exact extension date/.test(lower)) {
-      add('classesRemaining', context.classesRemaining);
-      add('packageExpiryDate', context.packageExpiryDate);
-      add('requestedRolloverDate', context.requestedRolloverDate);
-      add('rolloverReason', context.rolloverReason);
-    }
-  }
-  if ((classContextCategories.has(category) || hostedSpecific) && /class|session|hosted|barre|cycle|strength|trainer|instructor|late cancellation|injury during class/.test(lower)) add('classType', context.sessionId || context.classType);
-  // For trainer-specific categories, always require trainer when not yet captured —
-  // don't gate on specific question wording that the AI may phrase differently.
-  const trainerCategories = new Set(['Trainer Feedback', 'Instructor & Class Quality', 'Class Experience']);
-  if (trainerCategories.has(category)) add('trainer', context.trainer);
-  if (hostedSpecific) {
-    if (/which partner|partner name|influencer name|host name/.test(lower)) add('partnerName', context.partnerName);
-    if (/feedback area|prospect quality|follow-up preference/.test(lower)) {
-      add('hostedFeedbackArea', context.hostedFeedbackArea);
-      add('prospectQuality', context.prospectQuality);
-      add('followUpPreference', context.followUpPreference);
-    }
-  }
-  // desiredResolution: ask for the requested outcome on brief personal complaints so the
-  // owner can act without a follow-up.
-  if (shouldRequireComplaintResolution(text, context, category) || (route === 'request' && !physicalOnlyCategories.has(category) && /desired resolution|requested resolution|what resolution/.test(lower))) {
-    add('desiredResolution', context.desiredResolution);
-  }
-  if ((route === 'feedback' || route === 'complaint') && /sentiment unclear|member sentiment|how upset|frustration level/.test(lower)) add('memberSentiment', context.memberSentiment);
-
-  add('reportedBy', context.reportedBy);
-  if (prioritySpecific) add('priority', context.priority);
-  // For physical/maintenance/facility categories the AI captures operational detail through
-  // custom field IDs (e.g. latch_fault_type, door_access_status) — NOT the generic 'description'
-  // field. Requiring 'description' for physical issues causes the form to show the generic
-  // "Describe the issue" placeholder instead of the AI's contextual, targeted questions.
-  // For all other categories, require description if not yet captured.
-  if (!isPhysicalCategory) {
-    add('description', shouldRequireFullIssueSummary(text, context, category) ? '' : context.description);
-  }
+  add('priority', context.priority);
   add('resolutionRequired', context.resolutionRequired);
 
   return Array.from(new Set(fields));
@@ -1871,46 +1571,6 @@ Deno.serve(async (request) => {
     const effectiveBodyContext: Record<string, unknown> = { ...bodyContext };
     if (!isFormSubmission && !cleanString(effectiveBodyContext.initialReport) && rawIssueText) {
       effectiveBodyContext.initialReport = rawIssueText;
-    }
-
-    // Detect whether this is a physical/facility/maintenance issue from the text or the already-
-    // inferred category. Physical issues need full operational detail — a brief one-liner must NOT
-    // be treated as a complete description, because that would skip asking for fault detail,
-    // operational impact, incident time, and resolution approach.
-    const rawLower = rawIssueText.toLowerCase();
-    const physicalIssueKeywords = /repair|maintenance|broken|not working|not closing|not opening|stopped working|isn't working|won't close|won't open|not cooling|not heating|too hot|too cold|very hot|very cold|temperature|malfunction|faulty|damaged|leak|leaking|overflow|plumbing|drain|clog|flush|sewage|socket|electrical|bulb|fused|flickering|lights not|machine|washing|dryer|pump|pest|mold|mould|damp|door\b|lock\b|handle\b|hinge|ceiling|crack|cracked|loose|falling|fell|odour|odor|smell|stench|ventilation|locker|shower|washroom|toilet|steam|\bac\b|app crash|login issue|website down/;
-    const existingCategory = cleanString(effectiveBodyContext.category);
-    const physicalOnlyCategoryNames = new Set([
-      'Repair and Maintenance', 'Studio Amenities and Facilities', 'Facility & Equipment',
-      'Operating Systems', 'Tech Issues', 'App & Digital',
-    ]);
-    const isPhysicalIssue = physicalIssueKeywords.test(rawLower) || physicalOnlyCategoryNames.has(existingCategory);
-
-    // For physical issues: a short initial report is NOT a complete description.
-    // Clear it so the AI is forced to ask for proper operational detail.
-    // A "complete" description for a physical issue is multi-sentence (>80 chars with punctuation,
-    // or >120 chars, or contains a newline indicating structured detail).
-    if (isPhysicalIssue && cleanString(effectiveBodyContext.description) && !isFormSubmission) {
-      const existingDesc = cleanString(effectiveBodyContext.description);
-      const isBriefReport = existingDesc.length < 80 && !/[.!?]\s/.test(existingDesc) && !existingDesc.includes('\n');
-      if (isBriefReport) {
-        effectiveBodyContext.description = '';
-      }
-    }
-
-    // Auto-populate description only for non-physical issues AND only when the conversation
-    // already has established context (meaning this is a follow-up turn, not the initial report).
-    // On the first turn the raw message IS the initial report — not a structured description.
-    // Setting description = rawIssueText on turn 1 causes the AI to skip asking for detail
-    // because it thinks the description field is already satisfied.
-    // Physical issues never get auto-populated — the AI must collect structured operational detail.
-    const hasEstablishedContext = Boolean(
-      cleanString(effectiveBodyContext.category) ||
-      cleanString(effectiveBodyContext.intakeRoute) ||
-      cleanString(effectiveBodyContext.studio)
-    );
-    if (!isPhysicalIssue && !cleanString(effectiveBodyContext.description) && rawIssueText.length > 8 && !isFormSubmission && hasEstablishedContext) {
-      effectiveBodyContext.description = rawIssueText;
     }
 
     const bodyWithEffectiveContext = { ...body, context: effectiveBodyContext };
