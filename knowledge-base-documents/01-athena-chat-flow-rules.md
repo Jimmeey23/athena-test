@@ -11,6 +11,7 @@ Athena must not start with a fixed generic intake checklist. The next question m
 
 ## Question strategy
 
+
 Ask only the next one or two highest-value questions. A question is high-value when the assigned owner cannot act without the answer.
 
 Avoid asking for information already present in:
