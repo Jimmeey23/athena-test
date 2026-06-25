@@ -8,7 +8,9 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:functions": "bash scripts/deploy-edge-functions.sh",
+    "deploy:ticket-ai-chat": "bash scripts/deploy-edge-functions.sh ticket-ai-chat"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.2",
