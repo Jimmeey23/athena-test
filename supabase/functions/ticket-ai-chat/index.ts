@@ -674,7 +674,7 @@ function normalizeAiIntakeResponse(value: Record<string, unknown> | null): AiInt
     : null;
   return {
     needsMoreInfo: Boolean(value.needsMoreInfo || detailForm),
-    reply: cleanString(value.reply, detailForm ? 'Please complete the structured intake form below.' : 'I drafted the ticket below. Please review it before publishing.'),
+    reply: cleanString(value.reply),
     detailForm,
     ticket,
     suggestedChips: Array.isArray(value.suggestedChips) ? value.suggestedChips as AiIntakeResponse['suggestedChips'] : [],
@@ -1625,9 +1625,9 @@ Deno.serve(async (request) => {
         conversationId: body.conversationId || crypto.randomUUID(),
         promptProfile: `${promptProfile}:ai-dynamic`,
         needsMoreInfo,
-        reply: needsMoreInfo && !finalForm
-          ? 'I need a few details before drafting this ticket. Please complete the form below.'
-          : aiResponse.reply,
+        reply: cleanString(aiResponse.reply) || (needsMoreInfo
+          ? 'I need a few details before drafting this ticket.'
+          : 'I drafted the ticket below. Please review it before publishing.'),
         detailForm: finalForm,
         ticket: aiTicket,
         suggestedChips: aiResponse.suggestedChips || [],

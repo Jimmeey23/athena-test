@@ -256,6 +256,88 @@ function isAthenaDebugTraceEnabled(): boolean {
 
 const ATHENA_CHAT_RESPONSE_TIMEOUT_MS = 30_000;
 const ATHENA_CHAT_TIMEOUT_MESSAGE = 'Athena chat response timed out';
+
+const GENERIC_REPLY_PATTERNS = [
+  /^i need a few details before drafting this ticket/i,
+  /^please complete the (structured intake|intake) form/i,
+  /^just a moment.*gather a few more details/i,
+  /^i need a few details\./i,
+];
+
+function isGenericReply(reply?: string | null): boolean {
+  if (!reply) return true;
+  return GENERIC_REPLY_PATTERNS.some((pattern) => pattern.test(reply.trim()));
+}
+
+function buildContextualReply({
+  ctx,
+  formFields,
+  reporterFirstName,
+  isFirstTurn,
+}: {
+  ctx: { category?: string; subCategory?: string; intakeRoute?: string; priority?: string; studio?: string };
+  formFields: Array<{ id: string; label: string }>;
+  reporterFirstName?: string;
+  isFirstTurn: boolean;
+}): string {
+  const prefix = reporterFirstName ? `${reporterFirstName}, ` : '';
+  const { category, subCategory, priority, studio } = ctx;
+
+  const ackParts: string[] = [];
+  if (priority === 'Critical') ackParts.push('That sounds serious');
+  else if (priority === 'High') ackParts.push('Got it, this needs urgent attention');
+  else ackParts.push('Got it');
+
+  if (subCategory && subCategory !== 'Other') ackParts.push(`— I've logged this as a **${subCategory}** issue`);
+  else if (category) ackParts.push(`— I've logged this under **${category}**`);
+
+  if (studio) ackParts.push(`at ${studio.split(',')[0]}`);
+
+  const ack = ackParts.join(' ');
+
+  const FIELD_QUESTIONS: Record<string, string> = {
+    incidentDateTime: 'when did this happen',
+    memberName: 'which member is involved',
+    studio: 'which studio did this happen at',
+    clientsAffected: 'were any clients affected',
+    securityRisk: 'what is the current security risk',
+    accessStatus: 'what is the current access situation',
+    lockFaultType: 'what is the fault with the lock or door',
+    hvacSymptom: 'what symptom is the AC/HVAC showing',
+    bikeSymptom: 'what issue is the bike showing',
+    affectedArea: 'which area inside the studio is affected',
+    operationalImpact: 'what is the current operational impact',
+    resolutionRequirement: 'what resolution or vendor action is needed',
+    currentWorkaround: 'is any workaround in place',
+    desiredResolution: 'what resolution did the member ask for',
+    memberSentiment: 'how did the member react',
+    freezeStartDate: 'when should the freeze start',
+    classImpactType: 'how was the class affected',
+    priority: 'what priority should this be',
+  };
+
+  const questionLabels = formFields
+    .slice(0, 3)
+    .map((field) => FIELD_QUESTIONS[field.id] || field.label.toLowerCase().replace(/\?$/, ''));
+
+  let questionLine = '';
+  if (questionLabels.length === 1) {
+    questionLine = `I just need one more detail: ${questionLabels[0]}.`;
+  } else if (questionLabels.length === 2) {
+    questionLine = `A couple more details: ${questionLabels[0]}, and ${questionLabels[1]}.`;
+  } else if (questionLabels.length > 2) {
+    const last = questionLabels[questionLabels.length - 1];
+    const rest = questionLabels.slice(0, -1).join(', ');
+    questionLine = `A few more details needed: ${rest}, and ${last}.`;
+  }
+
+  if (!ack && !questionLine) {
+    return `${prefix}Just a couple more details and we'll have a clean draft ready! 🙂`;
+  }
+
+  const parts = [isFirstTurn ? `${prefix}${ack}.` : ack + '.', questionLine].filter(Boolean);
+  return parts.join(' ');
+}
 const ATHENA_AI_PROVIDER_LABELS: Record<string, string> = {
   claude: 'Claude Haiku',
   openai: 'OpenAI',
@@ -1722,15 +1804,22 @@ export const ChatInterface: React.FC<{ onOpenExistingTicket?: (ticket: Ticket) =
         singleField.type === 'select' &&
         singleFieldChips.length > 0
       );
+      const isFirstUserTurn = messages.filter((m) => m.role === 'user').length <= 1;
+      const effectiveReply = isGenericReply(data?.reply) ? null : data?.reply;
       const assistantContent = singleField
-        ? (data?.reply || buildNaturalSingleFieldPrompt({
+        ? (effectiveReply || buildNaturalSingleFieldPrompt({
             field: singleField,
             reporterFirstName,
           }))
         : finalDetailForm
-          ? (data?.reply || `${reporterFirstName ? `${reporterFirstName}, ` : ''}Just a couple more details and we'll have a clean draft ready! 🙂`)
+          ? (effectiveReply || buildContextualReply({
+              ctx: responseContext,
+              formFields: finalDetailForm.fields,
+              reporterFirstName,
+              isFirstTurn: isFirstUserTurn,
+            }))
           : ticket
-            ? (data?.reply || "Looks good — I've drafted the ticket below. Take a quick look before publishing.")
+            ? (effectiveReply || "Looks good — I've drafted the ticket below. Take a quick look before publishing.")
             : data?.reply || "Hmm, I didn't quite catch that. Could you tell me a bit more?";
       setPendingSingleField(null);
       await sleep(writingPauseMs(assistantContent));
