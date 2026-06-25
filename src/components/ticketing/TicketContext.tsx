@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { getEmployee, getEscalationTarget, isRecordOnlyTicket, isTicketBreached, PRIORITY_SLA, resolveTicketAssignee, resolveTicketDepartment, Ticket, TicketMetadata, TicketResolutionPlan } from '@/lib/ticketing-data';
 import { backendSupabase } from '@/lib/backend-supabase';
 import { getErrorMessage } from '@/lib/error-formatting';
-import { useBackendAuth } from '@/contexts/BackendAuthContext';
+import { useBackendAuth } from '@/contexts/useBackendAuth';
 import { ResolvedAssignment, resolveConfiguredAssignment } from '@/lib/routing-settings';
 import {
   canAccessTicket as canAccessTicketForIdentity,

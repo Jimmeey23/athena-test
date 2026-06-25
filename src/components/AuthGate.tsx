@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Bot } from 'lucide-react';
-import { useBackendAuth } from '@/contexts/BackendAuthContext';
+import { useBackendAuth } from '@/contexts/useBackendAuth';
 
 export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { session, loading, signIn, signInWithGoogle, signUp } = useBackendAuth();

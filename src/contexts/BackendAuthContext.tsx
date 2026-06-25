@@ -1,30 +1,6 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
+import React, { useEffect, useMemo, useState } from 'react';
 import { backendSupabase } from '@/lib/backend-supabase';
-
-export type AccessRole = 'admin' | 'support';
-
-interface BackendProfile {
-  id: string;
-  email?: string | null;
-  full_name?: string | null;
-  role?: string | null;
-  team?: string | null;
-}
-
-interface BackendAuthContextValue {
-  session: Session | null;
-  user: User | null;
-  profile: BackendProfile | null;
-  accessRole: AccessRole;
-  loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
-  signOut: () => Promise<void>;
-}
-
-const BackendAuthContext = createContext<BackendAuthContextValue | null>(null);
+import { BackendAuthContext, type AccessRole, type BackendAuthContextValue, type BackendProfile } from './backend-auth-context';
 
 export const BackendAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
@@ -108,10 +84,4 @@ export const BackendAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }), [accessRole, loading, profile, session]);
 
   return <BackendAuthContext.Provider value={value}>{children}</BackendAuthContext.Provider>;
-};
-
-export const useBackendAuth = () => {
-  const context = useContext(BackendAuthContext);
-  if (!context) throw new Error('useBackendAuth must be used within BackendAuthProvider');
-  return context;
 };

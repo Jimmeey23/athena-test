@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, CheckCircle2, FileText, Pencil, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
-import { useBackendAuth } from '@/contexts/BackendAuthContext';
+import { useBackendAuth } from '@/contexts/useBackendAuth';
 import { backendSupabase, ticketingFunctionsSupabase } from '@/lib/backend-supabase';
 import { withTimeout } from '@/lib/ticketing-functions';
 

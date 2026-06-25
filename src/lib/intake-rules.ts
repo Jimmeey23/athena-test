@@ -975,7 +975,7 @@ export function getMissingIntakeFields(context: IntakeContext, options: MissingI
     }
   }
 
-  if (membershipSpecific) {
+  if (membershipSpecific && /select active membership|which membership|membership record|package record/.test(issueText)) {
     add('membership', context.membership);
 
     if (/freeze start date|freeze end date|exact freeze dates/.test(issueText)) {

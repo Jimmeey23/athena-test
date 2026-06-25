@@ -7,7 +7,7 @@ import { getErrorMessage } from '@/lib/error-formatting';
 import { TicketPreviewCard } from './TicketPreviewCard';
 import { ContextPicker, Context } from './ContextPicker';
 import { useTickets } from './useTickets';
-import { useBackendAuth } from '@/contexts/BackendAuthContext';
+import { useBackendAuth } from '@/contexts/useBackendAuth';
 import {
   getMomenceMemberMemberships,
   getMomenceSessionBookings,
@@ -3284,11 +3284,7 @@ function suggestionsForTemplateTextField(label: string): string[] {
       'Member requested a clear resolution timeline and preferred WhatsApp follow-up.',
     ];
   }
-  return [
-    'Member reported this during a studio touchpoint.',
-    'Member requested follow-up from the appropriate team.',
-    'Team member documented the member feedback for internal resolution.',
-  ];
+  return [];
 }
 
 function suggestionsForDetailField(field: DetailFormField): string[] {

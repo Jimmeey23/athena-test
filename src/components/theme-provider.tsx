@@ -1,22 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { createContext, useContext, useEffect, useState } from "react"
-
-type Theme = "dark" | "light" | "system"
-
-type ThemeContextType = {
-  theme: Theme
-  setTheme: (theme: Theme) => void
-}
+import { useEffect, useState } from "react"
+import { ThemeContext, type Theme, type ThemeContextType } from "./theme-context"
 
 type ThemeProviderProps = React.HTMLAttributes<HTMLDivElement> & {
   children: React.ReactNode
   defaultTheme?: Theme
   value?: string
 }
-
-const ThemeContext = createContext<ThemeContextType | null>(null)
 
 export function ThemeProvider({
   children,
@@ -63,12 +55,4 @@ export function ThemeProvider({
       {children}
     </ThemeContext.Provider>
   )
-}
-
-export const useTheme = (): ThemeContextType => {
-  const context = useContext(ThemeContext)
-  if (!context) {
-    throw new Error("useTheme must be used within a ThemeProvider")
-  }
-  return context
 }

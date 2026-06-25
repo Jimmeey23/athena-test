@@ -1,18 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
-
-interface AppContextType {
-  sidebarOpen: boolean;
-  toggleSidebar: () => void;
-}
-
-const defaultAppContext: AppContextType = {
-  sidebarOpen: false,
-  toggleSidebar: () => {},
-};
-
-const AppContext = createContext<AppContextType>(defaultAppContext);
-
-export const useAppContext = () => useContext(AppContext);
+import React, { useState } from 'react';
+import { AppContext } from './app-context';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
