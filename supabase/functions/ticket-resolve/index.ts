@@ -58,24 +58,24 @@ async function rewriteResolutionEmail(
   resolutionType: string,
   resolutionNote: string,
 ): Promise<string> {
-  const result = await callJsonAi(
-    (name) => Deno.env.get(name) || undefined,
-    fetch,
-    {
-      temperature: 0.3,
-      maxTokens: 300,
-      systemContent: [
-        'You are writing a brief, warm, professional resolution email on behalf of Physique 57 India.',
-        'Rewrite the following internal resolution note as a 2-3 sentence member-facing message.',
-        'Be specific about what was done. Do not reveal internal routing, assignee names, or ticket IDs.',
-        'Sign off as "The Physique 57 India Team".',
-        'Return JSON only: {"emailBody": string}',
-      ].join('\n'),
-      userContent: JSON.stringify({ ticketTitle, resolutionType, resolutionNote }),
-    },
-  );
-  if (!result) return resolutionNote;
   try {
+    const result = await callJsonAi(
+      (name) => Deno.env.get(name) || undefined,
+      fetch,
+      {
+        temperature: 0.3,
+        maxTokens: 300,
+        systemContent: [
+          'You are writing a brief, warm, professional resolution email on behalf of Physique 57 India.',
+          'Rewrite the following internal resolution note as a 2-3 sentence member-facing message.',
+          'Be specific about what was done. Do not reveal internal routing, assignee names, or ticket IDs.',
+          'Sign off as "The Physique 57 India Team".',
+          'Return JSON only: {"emailBody": string}',
+        ].join('\n'),
+        userContent: JSON.stringify({ ticketTitle, resolutionType, resolutionNote }),
+      },
+    );
+    if (!result) return resolutionNote;
     const parsed = JSON.parse(result.content);
     return typeof parsed.emailBody === 'string' && parsed.emailBody.trim()
       ? parsed.emailBody
@@ -153,8 +153,13 @@ Deno.serve(async (request) => {
       .single();
     if (fetchError || !ticket) return json({ error: 'Ticket not found' }, 404);
 
+    // Already resolved/closed guard
+    if (ticket.status === 'Resolved' || ticket.status === 'Closed') {
+      return json({ error: 'Ticket is already resolved or closed' }, 409);
+    }
+
     // Ownership check (claim is exempt — anyone can claim a New ticket)
-    if (action !== 'claim' && ticket.assigned_to !== authUser.email && ticket.assigned_to !== authUser.id) {
+    if (action !== 'claim' && ticket.assigned_to !== authUser.id) {
       return json({ error: 'Only the assigned owner can perform this action' }, 403);
     }
 
@@ -164,11 +169,6 @@ Deno.serve(async (request) => {
       return json({
         error: `Cannot ${action} a ticket with status "${ticket.status}". Expected "${t.from}".`,
       }, 400);
-    }
-
-    // Already resolved/closed guard
-    if (ticket.status === 'Resolved' || ticket.status === 'Closed') {
-      return json({ error: 'Ticket is already resolved or closed' }, 409);
     }
 
     // ── RESOLVE ACTION ──────────────────────────────────────────────
@@ -181,7 +181,7 @@ Deno.serve(async (request) => {
       if (!resolutionNote || resolutionNote.trim().length < 20) {
         return json({ error: 'resolutionNote must be at least 20 characters.' }, 400);
       }
-      if (!reporterContacted) {
+      if (reporterContacted !== true) {
         return json({ error: 'reporterContacted must be true.' }, 400);
       }
 
@@ -206,15 +206,16 @@ Deno.serve(async (request) => {
         return json({ error: updateError?.message || 'Failed to update ticket' }, 500);
       }
 
-      await admin.from('ticket_events').insert({
+      const { error: eventError } = await admin.from('ticket_events').insert({
         ticket_id: ticketId,
         event_type: 'status_changed',
         actor: authUser.email || authUser.id,
-        from_value: 'In Progress',
+        from_value: t.from,
         to_value: 'Resolved',
         metadata: { resolutionType, resolvedBy: authUser.email || authUser.id },
         created_by: authUser.id,
       });
+      if (eventError) console.warn('[ticket-resolve] ticket_events insert failed:', eventError.message);
 
       // Email reporter
       let emailSent = false;
@@ -236,7 +237,7 @@ Deno.serve(async (request) => {
 
     // ── CLAIM / AWAIT_MEMBER / UNBLOCK ───────────────────────────────
     const patch: Record<string, unknown> = { status: t.to };
-    if (action === 'claim') patch.assigned_to = authUser.email || authUser.id;
+    if (action === 'claim') patch.assigned_to = authUser.id;
 
     const { data: updated, error: updateError } = await admin
       .from('tickets')
@@ -249,7 +250,7 @@ Deno.serve(async (request) => {
       return json({ error: updateError?.message || 'Failed to update ticket' }, 500);
     }
 
-    await admin.from('ticket_events').insert({
+    const { error: eventError } = await admin.from('ticket_events').insert({
       ticket_id: ticketId,
       event_type: 'status_changed',
       actor: authUser.email || authUser.id,
@@ -258,6 +259,7 @@ Deno.serve(async (request) => {
       metadata: { action },
       created_by: authUser.id,
     });
+    if (eventError) console.warn('[ticket-resolve] ticket_events insert failed:', eventError.message);
 
     return json({ ticket: updated, emailSent: false });
 
