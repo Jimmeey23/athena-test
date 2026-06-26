@@ -137,6 +137,7 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
   const [resolutionEscalation, setResolutionEscalation] = useState('');
   const [editValues, setEditValues] = useState<Partial<Ticket>>({});
   const [resolveDrawerOpen, setResolveDrawerOpen] = useState(false);
+  const [ticketOverride, setTicketOverride] = useState<typeof ticket | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [statusValues, setStatusValues] = useState<TicketStatusUpdateInput>(() => defaultStatusValues(ticket));
@@ -212,10 +213,8 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
 
   if (!ticket) return null;
 
-  const isOwner =
-    !!user &&
-    !!ticket.assignedTo &&
-    (ticket.assignedTo === user.email || ticket.assignedTo === user.id);
+  const effectiveTicket = ticketOverride ?? ticket;
+  const isOwner = Boolean(user?.id && effectiveTicket.assignedTo === user.id);
 
   const handleQuickAction = async (action: 'claim' | 'await_member' | 'unblock') => {
     setActionLoading(action);
@@ -937,10 +936,10 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
         </div>{/* end flex-1 overflow-y-auto */}
 
         {/* Owner action bar */}
-        {(ticket.status === 'New' || isOwner) && ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
+        {(effectiveTicket.status === 'New' || isOwner) && effectiveTicket.status !== 'Resolved' && effectiveTicket.status !== 'Closed' && (
           <div className="bg-white dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800 px-4 py-3 flex flex-col gap-2 shrink-0">
             <div className="flex gap-2">
-              {ticket.status === 'New' && (
+              {effectiveTicket.status === 'New' && (!effectiveTicket.assignedTo || effectiveTicket.assignedTo === user?.id) && (
                 <button
                   onClick={() => handleQuickAction('claim')}
                   disabled={actionLoading === 'claim'}
@@ -949,7 +948,7 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
                   {actionLoading === 'claim' ? 'Claiming…' : 'Claim Ticket'}
                 </button>
               )}
-              {isOwner && ticket.status === 'In Progress' && (
+              {isOwner && effectiveTicket.status === 'In Progress' && (
                 <>
                   <button
                     onClick={() => handleQuickAction('await_member')}
@@ -966,7 +965,7 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
                   </button>
                 </>
               )}
-              {isOwner && ticket.status === 'Awaiting Member' && (
+              {isOwner && effectiveTicket.status === 'Awaiting Member' && (
                 <button
                   onClick={() => handleQuickAction('unblock')}
                   disabled={!!actionLoading}
@@ -987,7 +986,8 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
           ticket={ticket}
           open={resolveDrawerOpen}
           onClose={() => setResolveDrawerOpen(false)}
-          onResolved={(_updated) => {
+          onResolved={(updatedTicket) => {
+            setTicketOverride(updatedTicket as typeof ticket);
             setResolveDrawerOpen(false);
           }}
         />
