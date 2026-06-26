@@ -8,6 +8,8 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// SYNC: these must match RESOLUTION_TYPES and TRANSITIONS in src/lib/ticket-resolution.ts
+// Deno cannot import from src/, so they are duplicated here. Keep both in sync manually.
 const RESOLUTION_TYPES = new Set([
   'Fixed', 'Escalated', 'Refund Issued', 'Policy Explained', 'No Action Needed', 'Duplicate',
 ]);

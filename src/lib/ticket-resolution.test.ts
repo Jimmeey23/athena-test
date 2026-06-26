@@ -93,3 +93,29 @@ describe('validateResolvePayload', () => {
     expect(RESOLUTION_TYPES).toHaveLength(6);
   });
 });
+
+describe('edge-function constant sync', () => {
+  // Reads the Deno edge function source and checks its RESOLUTION_TYPES Set
+  // and TRANSITIONS object match src/lib/ticket-resolution.ts.
+  // Fails if someone updates one copy but forgets the other.
+  it('RESOLUTION_TYPES matches edge function copy', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('supabase/functions/ticket-resolve/index.ts', 'utf8');
+    const match = src.match(/const RESOLUTION_TYPES = new Set\(\[([\s\S]*?)\]\)/);
+    expect(match, 'RESOLUTION_TYPES not found in edge function').toBeTruthy();
+    const edgeTypes = match![1]
+      .split(',')
+      .map(s => s.trim().replace(/^'|'$/g, ''))
+      .filter(Boolean);
+    expect(new Set(edgeTypes)).toEqual(new Set(RESOLUTION_TYPES));
+  });
+
+  it('TRANSITIONS actions match edge function copy', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('supabase/functions/ticket-resolve/index.ts', 'utf8');
+    const edgeActions = ['claim', 'await_member', 'unblock', 'resolve'];
+    for (const action of edgeActions) {
+      expect(src).toContain(`${action}:`);
+    }
+  });
+});

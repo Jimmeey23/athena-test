@@ -942,10 +942,10 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
         </div>{/* end flex-1 overflow-y-auto */}
 
         {/* Owner action bar */}
-        {(effectiveTicket.status === 'New' || isOwner) && effectiveTicket.status !== 'Resolved' && effectiveTicket.status !== 'Closed' && (
+        {(isOwner || (effectiveTicket.status === 'New' && (!effectiveTicket.assignedTo || effectiveTicket.assignedTo === currentEmployeeName))) && effectiveTicket.status !== 'Resolved' && effectiveTicket.status !== 'Closed' && (
           <div className="bg-white dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800 px-4 py-3 flex flex-col gap-2 shrink-0">
             <div className="flex gap-2">
-              {effectiveTicket.status === 'New' && (!effectiveTicket.assignedTo || effectiveTicket.assignedTo === user?.id) && (
+              {effectiveTicket.status === 'New' && (!effectiveTicket.assignedTo || effectiveTicket.assignedTo === currentEmployeeName) && (
                 <button
                   onClick={() => handleQuickAction('claim')}
                   disabled={actionLoading === 'claim'}
