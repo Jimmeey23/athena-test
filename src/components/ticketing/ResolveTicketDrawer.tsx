@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle2, X } from 'lucide-react';
 import { RESOLUTION_TYPES, ResolveTicketPayload, ResolveTicketResponse } from '@/lib/ticket-resolution';
 import { invokeTicketingFunction } from '@/lib/ticketing-functions';
@@ -9,7 +9,7 @@ interface Props {
   ticket: Ticket;
   open: boolean;
   onClose: () => void;
-  onResolved: (updated: Record<string, unknown>) => void;
+  onResolved: (updatedTicket: unknown) => void;
 }
 
 export function ResolveTicketDrawer({ ticket, open, onClose, onResolved }: Props) {
@@ -21,6 +21,17 @@ export function ResolveTicketDrawer({ ticket, open, onClose, onResolved }: Props
   const [error, setError] = useState('');
   const [emailWarning, setEmailWarning] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setResolutionType('');
+      setResolutionNote('');
+      setReporterContacted(false);
+      setError('');
+      setEmailWarning(false);
+      setSuccessMessage('');
+    }
+  }, [open, ticket.id]);
 
   if (!open) return null;
 
@@ -159,7 +170,8 @@ export function ResolveTicketDrawer({ ticket, open, onClose, onResolved }: Props
             <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
               <p>{error}</p>
               <button
-                type="submit"
+                type="button"
+                onClick={handleSubmit}
                 className="mt-2 text-xs font-medium underline hover:no-underline"
               >
                 Retry
