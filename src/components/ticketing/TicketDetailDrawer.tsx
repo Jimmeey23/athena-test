@@ -23,6 +23,9 @@ import { MomenceAutomationPanel } from './MomenceAutomationPanel';
 import { backendSupabase } from '@/lib/backend-supabase';
 import { MomenceMemberTicketField, MomenceSessionTicketField } from './MomenceTicketEntityFields';
 import { buildResolutionAssistant } from '@/lib/smart-ops-intelligence';
+import { invokeTicketingFunction } from '@/lib/ticketing-functions';
+import { useBackendAuth } from '@/contexts/useBackendAuth';
+import { ResolveTicketDrawer } from './ResolveTicketDrawer';
 
 interface Props {
   ticket: Ticket | null;
@@ -114,6 +117,7 @@ function selectValues(values: readonly string[], current: string): string[] {
 
 export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
   const { updateTicket, updateTicketStatus, updateTicketResolutionPlan, canUpdateTicketStatus, canEditTicketResolution, deleteTicket } = useTickets();
+  const { user } = useBackendAuth();
   const [editingLinkedContext, setEditingLinkedContext] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -132,6 +136,9 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
   const [resolutionMemberResponse, setResolutionMemberResponse] = useState('');
   const [resolutionEscalation, setResolutionEscalation] = useState('');
   const [editValues, setEditValues] = useState<Partial<Ticket>>({});
+  const [resolveDrawerOpen, setResolveDrawerOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [statusValues, setStatusValues] = useState<TicketStatusUpdateInput>(() => defaultStatusValues(ticket));
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const ticketAttachments = useMemo(() => ticket ? readTicketAttachments(ticket) : [], [ticket]);
@@ -204,6 +211,23 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
   }, [ticket?.id, ticketAttachments]);
 
   if (!ticket) return null;
+
+  const isOwner =
+    !!user &&
+    !!ticket.assignedTo &&
+    (ticket.assignedTo === user.email || ticket.assignedTo === user.id);
+
+  const handleQuickAction = async (action: 'claim' | 'await_member' | 'unblock') => {
+    setActionLoading(action);
+    setActionError(null);
+    const { error } = await invokeTicketingFunction('ticket-resolve', {
+      body: { ticketId: ticket.id, action },
+    });
+    setActionLoading(null);
+    if (error) {
+      setActionError(error.message || 'Action failed. Please try again.');
+    }
+  };
 
   const priorityMeta = PRIORITY_SLA[ticket.priority];
   const currentValues = { ...ticket, ...editValues };
@@ -306,7 +330,8 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
         className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40"
         onClick={onClose}
       />
-      <div className="fixed right-0 top-0 bottom-0 w-full max-w-xl bg-white z-50 shadow-2xl overflow-y-auto border-l border-slate-200">
+      <div className="fixed right-0 top-0 bottom-0 w-full max-w-xl bg-white z-50 shadow-2xl flex flex-col border-l border-slate-200">
+        <div className="flex-1 overflow-y-auto">
         <div className="sticky top-0 bg-white/92 backdrop-blur-xl border-b border-slate-200 px-5 py-4 flex items-start justify-between gap-2">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -909,6 +934,63 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
             Created {new Date(ticket.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
           </div>
         </div>
+        </div>{/* end flex-1 overflow-y-auto */}
+
+        {/* Owner action bar */}
+        {(ticket.status === 'New' || isOwner) && ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
+          <div className="bg-white dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800 px-4 py-3 flex flex-col gap-2 shrink-0">
+            <div className="flex gap-2">
+              {ticket.status === 'New' && (
+                <button
+                  onClick={() => handleQuickAction('claim')}
+                  disabled={actionLoading === 'claim'}
+                  className="flex-1 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium py-2 transition-colors"
+                >
+                  {actionLoading === 'claim' ? 'Claiming…' : 'Claim Ticket'}
+                </button>
+              )}
+              {isOwner && ticket.status === 'In Progress' && (
+                <>
+                  <button
+                    onClick={() => handleQuickAction('await_member')}
+                    disabled={!!actionLoading}
+                    className="flex-1 rounded-lg border border-amber-300 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50 text-sm font-medium py-2 transition-colors"
+                  >
+                    {actionLoading === 'await_member' ? 'Updating…' : 'Awaiting Member'}
+                  </button>
+                  <button
+                    onClick={() => setResolveDrawerOpen(true)}
+                    className="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-2 transition-colors"
+                  >
+                    Resolve
+                  </button>
+                </>
+              )}
+              {isOwner && ticket.status === 'Awaiting Member' && (
+                <button
+                  onClick={() => handleQuickAction('unblock')}
+                  disabled={!!actionLoading}
+                  className="flex-1 rounded-lg border border-blue-300 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 text-sm font-medium py-2 transition-colors"
+                >
+                  {actionLoading === 'unblock' ? 'Updating…' : 'Member Responded — Unblock'}
+                </button>
+              )}
+            </div>
+            {actionError && (
+              <p className="text-xs text-red-600 dark:text-red-400">{actionError}</p>
+            )}
+          </div>
+        )}
+
+        {/* Resolution drawer */}
+        <ResolveTicketDrawer
+          ticket={ticket}
+          open={resolveDrawerOpen}
+          onClose={() => setResolveDrawerOpen(false)}
+          onResolved={(_updated) => {
+            setResolveDrawerOpen(false);
+          }}
+        />
       </div>
     </>
   );
