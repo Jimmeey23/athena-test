@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { getEmployee, getEscalationTarget, isRecordOnlyTicket, isTicketBreached, PRIORITY_SLA, resolveTicketAssignee, resolveTicketDepartment, Ticket, TicketMetadata, TicketResolutionPlan } from '@/lib/ticketing-data';
+import { ASSOCIATES, getEmployee, getEscalationTarget, isRecordOnlyTicket, isTicketBreached, PRIORITY_SLA, resolveTicketAssignee, resolveTicketDepartment, Ticket, TicketMetadata, TicketResolutionPlan } from '@/lib/ticketing-data';
 import { backendSupabase } from '@/lib/backend-supabase';
 import { getErrorMessage } from '@/lib/error-formatting';
 import { useBackendAuth } from '@/contexts/useBackendAuth';
@@ -189,6 +189,11 @@ function normalizeTicketTags(tags?: string[] | null): string[] {
 function normalizeTicketOwner(category: string, studio?: string | null, assignedTo?: string | null): string {
   if (assignedTo === RECORD_ONLY_ASSIGNEE) return RECORD_ONLY_ASSIGNEE;
   if (assignedTo && getEmployee(assignedTo)) return assignedTo;
+  // resolve by email (edge function may store email in assigned_to)
+  if (assignedTo) {
+    const byEmail = ASSOCIATES.find(e => e.email && e.email.toLowerCase() === assignedTo.toLowerCase());
+    if (byEmail) return byEmail.name;
+  }
   return resolveTicketAssignee(category, studio || undefined);
 }
 

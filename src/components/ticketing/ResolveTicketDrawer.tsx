@@ -4,6 +4,7 @@ import { RESOLUTION_TYPES, ResolveTicketPayload, ResolveTicketResponse } from '@
 import { invokeTicketingFunction } from '@/lib/ticketing-functions';
 import { useBackendAuth } from '@/contexts/useBackendAuth';
 import type { Ticket } from '@/lib/ticketing-data';
+import { ASSOCIATES } from '@/lib/ticketing-data';
 
 interface Props {
   ticket: Ticket;
@@ -35,7 +36,10 @@ export function ResolveTicketDrawer({ ticket, open, onClose, onResolved }: Props
 
   if (!open) return null;
 
-  const isAssignee = ticket.assignedTo === user?.id;
+  const currentEmployeeName = user?.email
+    ? (ASSOCIATES.find(e => e.email && e.email.toLowerCase() === user?.email!.toLowerCase())?.name ?? null)
+    : null;
+  const isAssignee = Boolean(currentEmployeeName && ticket.assignedTo === currentEmployeeName);
   const noteLength = resolutionNote.trim().length;
   const canSubmit = isAssignee && resolutionType !== '' && noteLength >= 20 && reporterContacted && !loading;
 

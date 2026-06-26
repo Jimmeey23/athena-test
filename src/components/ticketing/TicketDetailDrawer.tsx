@@ -158,6 +158,7 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
     setStatusValues(defaultStatusValues(ticket));
     setStatusError('');
     setResolutionError('');
+    setTicketOverride(null);
   }, [ticket]);
 
   useEffect(() => {
@@ -214,18 +215,23 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
   if (!ticket) return null;
 
   const effectiveTicket = ticketOverride ?? ticket;
-  const isOwner = Boolean(user?.id && effectiveTicket.assignedTo === user.id);
+  const currentEmployeeName = user?.email
+    ? (ASSOCIATES.find(e => e.email && e.email.toLowerCase() === user.email!.toLowerCase())?.name ?? null)
+    : null;
+  const isOwner = Boolean(currentEmployeeName && effectiveTicket.assignedTo === currentEmployeeName);
 
   const handleQuickAction = async (action: 'claim' | 'await_member' | 'unblock') => {
     setActionLoading(action);
     setActionError(null);
-    const { error } = await invokeTicketingFunction('ticket-resolve', {
+    const { data, error } = await invokeTicketingFunction<{ ticket: typeof ticket; emailSent: boolean }>('ticket-resolve', {
       body: { ticketId: ticket.id, action },
     });
-    setActionLoading(null);
-    if (error) {
-      setActionError(error.message || 'Action failed. Please try again.');
+    if (error || !data?.ticket) {
+      setActionError(error?.message || 'Action failed. Please try again.');
+    } else {
+      setTicketOverride(data.ticket as typeof ticket);
     }
+    setActionLoading(null);
   };
 
   const priorityMeta = PRIORITY_SLA[ticket.priority];
@@ -983,7 +989,7 @@ export const TicketDetailDrawer: React.FC<Props> = ({ ticket, onClose }) => {
 
         {/* Resolution drawer */}
         <ResolveTicketDrawer
-          ticket={ticket}
+          ticket={effectiveTicket}
           open={resolveDrawerOpen}
           onClose={() => setResolveDrawerOpen(false)}
           onResolved={(updatedTicket) => {

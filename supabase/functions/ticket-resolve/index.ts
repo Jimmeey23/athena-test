@@ -58,6 +58,7 @@ async function rewriteResolutionEmail(
   resolutionType: string,
   resolutionNote: string,
 ): Promise<string> {
+  const safeTitle = ticketTitle.replace(/[\r\n]/g, ' ');
   try {
     const result = await callJsonAi(
       (name) => Deno.env.get(name) || undefined,
@@ -72,7 +73,7 @@ async function rewriteResolutionEmail(
           'Sign off as "The Physique 57 India Team".',
           'Return JSON only: {"emailBody": string}',
         ].join('\n'),
-        userContent: JSON.stringify({ ticketTitle, resolutionType, resolutionNote }),
+        userContent: JSON.stringify({ ticketTitle: safeTitle, resolutionType, resolutionNote }),
       },
     );
     if (!result) return resolutionNote;
@@ -90,13 +91,14 @@ async function sendResolutionEmail(
   ticketTitle: string,
   emailBody: string,
 ): Promise<boolean> {
+  const safeTitle = ticketTitle.replace(/[\r\n]/g, ' ');
   const fromEmail = optionalEnv('MAILTRAP_FROM_EMAIL', 'SMTP_FROM_EMAIL') || 'athena@physique57india.com';
   const fromName = optionalEnv('MAILTRAP_FROM_NAME', 'SMTP_FROM_NAME') || 'Physique 57 India';
   try {
     await smtpTransport().sendMail({
       from: `"${fromName}" <${fromEmail}>`,
       to: toEmail,
-      subject: `Your report has been resolved: ${ticketTitle}`,
+      subject: `Your report has been resolved: ${safeTitle}`,
       text: emailBody,
     });
     return true;
@@ -159,7 +161,7 @@ Deno.serve(async (request) => {
     }
 
     // Ownership check (claim is exempt — anyone can claim a New ticket)
-    if (action !== 'claim' && ticket.assigned_to !== authUser.id) {
+    if (action !== 'claim' && ticket.assigned_to !== authUser.email && ticket.assigned_to !== authUser.id) {
       return json({ error: 'Only the assigned owner can perform this action' }, 403);
     }
 
@@ -195,16 +197,16 @@ Deno.serve(async (request) => {
       };
 
       const existingMeta = ticket.metadata && typeof ticket.metadata === 'object' ? ticket.metadata : {};
-      const { data: updated, error: updateError } = await admin
+      const { data: resolveRows, error: updateError } = await admin
         .from('tickets')
         .update({ status: 'Resolved', metadata: { ...existingMeta, resolution: resolutionMeta } })
         .eq('id', ticketId)
-        .select('*')
-        .single();
+        .eq('status', t.from)
+        .select('*');
 
-      if (updateError || !updated) {
-        return json({ error: updateError?.message || 'Failed to update ticket' }, 500);
-      }
+      if (updateError) return json({ error: updateError.message }, 500);
+      if (!resolveRows || resolveRows.length === 0) return json({ error: 'Ticket status changed. Refresh and try again.' }, 409);
+      const updated = resolveRows[0];
 
       const { error: eventError } = await admin.from('ticket_events').insert({
         ticket_id: ticketId,
@@ -237,18 +239,18 @@ Deno.serve(async (request) => {
 
     // ── CLAIM / AWAIT_MEMBER / UNBLOCK ───────────────────────────────
     const patch: Record<string, unknown> = { status: t.to };
-    if (action === 'claim') patch.assigned_to = authUser.id;
+    if (action === 'claim') patch.assigned_to = authUser.email || authUser.id;
 
-    const { data: updated, error: updateError } = await admin
+    const { data: rows, error: updateError } = await admin
       .from('tickets')
       .update(patch)
       .eq('id', ticketId)
-      .select('*')
-      .single();
+      .eq('status', t.from)
+      .select('*');
 
-    if (updateError || !updated) {
-      return json({ error: updateError?.message || 'Failed to update ticket' }, 500);
-    }
+    if (updateError) return json({ error: updateError.message }, 500);
+    if (!rows || rows.length === 0) return json({ error: 'Ticket status changed. Refresh and try again.' }, 409);
+    const updated = rows[0];
 
     const { error: eventError } = await admin.from('ticket_events').insert({
       ticket_id: ticketId,
