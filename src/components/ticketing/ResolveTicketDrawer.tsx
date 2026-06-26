@@ -39,8 +39,7 @@ export function ResolveTicketDrawer({ ticket, open, onClose, onResolved }: Props
   const noteLength = resolutionNote.trim().length;
   const canSubmit = isAssignee && resolutionType !== '' && noteLength >= 20 && reporterContacted && !loading;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitPayload() {
     if (!canSubmit) return;
     setLoading(true);
     setError('');
@@ -77,11 +76,15 @@ export function ResolveTicketDrawer({ ticket, open, onClose, onResolved }: Props
         onResolved(data.ticket);
         setSuccessMessage('Ticket resolved, but the reporter email failed to send — please notify them manually.');
       } else {
-        setSuccessMessage('Ticket successfully resolved.');
         onResolved(data.ticket);
         onClose();
       }
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await submitPayload();
   }
 
   return (
@@ -171,7 +174,7 @@ export function ResolveTicketDrawer({ ticket, open, onClose, onResolved }: Props
               <p>{error}</p>
               <button
                 type="button"
-                onClick={handleSubmit}
+                onClick={submitPayload}
                 className="mt-2 text-xs font-medium underline hover:no-underline"
               >
                 Retry
@@ -182,13 +185,6 @@ export function ResolveTicketDrawer({ ticket, open, onClose, onResolved }: Props
           {/* Email warning */}
           {emailWarning && !error && (
             <p className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
-              {successMessage}
-            </p>
-          )}
-
-          {/* Success */}
-          {successMessage && !emailWarning && (
-            <p className="text-sm text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg px-3 py-2">
               {successMessage}
             </p>
           )}
