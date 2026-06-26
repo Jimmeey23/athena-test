@@ -30,7 +30,7 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 const STATUS_COLOR: Record<string, string> = {
   'New': 'bg-slate-50 text-slate-700 border-slate-200',
   'In Progress': 'bg-indigo-50 text-indigo-700 border-indigo-200',
-  'Awaiting Member': 'bg-sky-50 text-sky-700 border-sky-200',
+  'Awaiting Member': 'bg-amber-50 text-amber-700 border-amber-200',
   'Resolved': 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Closed': 'bg-slate-100 text-slate-700 border-slate-200',
 };
